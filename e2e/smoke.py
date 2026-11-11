@@ -5,6 +5,11 @@ test database and generates the sample library. It expects a FRESH server (it
 goes through the first-run setup page), the library from make_library.py, and
 E2E_BASE pointing at the server. E2E_CHROME may name a Chrome/Chromium binary;
 otherwise Playwright's own browser is used (`playwright install chromium`).
+
+Hunting a check that fails only sometimes (it is usually a check that looks at
+the page a few milliseconds too early): E2E_SLOW=4 runs every page about 4x
+slower with network latency, and E2E_VERBOSE=1 also prints the detail of the
+checks that passed.
 """
 import os, re, sys, time, json, traceback
 from playwright.sync_api import sync_playwright
@@ -13,9 +18,11 @@ BASE = os.environ.get('E2E_BASE', 'http://127.0.0.1:18080')
 results = []          # (ok, name, detail)
 console_errors = []
 
+VERBOSE = bool(os.environ.get('E2E_VERBOSE'))   # also print the detail of checks that passed
+
 def check(name, cond, detail=''):
     results.append((bool(cond), name, detail))
-    print(('PASS ' if cond else 'FAIL ') + name + ((' :: ' + str(detail)) if (detail and not cond) else ''))
+    print(('PASS ' if cond else 'FAIL ') + name + ((' :: ' + str(detail)) if (detail and (VERBOSE or not cond)) else ''))
     sys.stdout.flush()
 
 def api(page, path, method='GET', body=None):
@@ -40,6 +47,35 @@ def wait_until(fn, timeout=10, interval=0.25, desc=''):
             last = e
         time.sleep(interval)
     raise AssertionError(f'timeout waiting for {desc}: last={last!r}')
+
+# E2E_SLOW=4 makes every page about 4x slower and adds network latency, which is
+# what a busy CI runner feels like. It is how timing-sensitive checks are found.
+SLOW = float(os.environ.get('E2E_SLOW') or 0)
+
+def new_page(context):
+    page = context.new_page()
+    if SLOW > 1:
+        cdp = context.new_cdp_session(page)
+        cdp.send('Emulation.setCPUThrottlingRate', {'rate': SLOW})
+        cdp.send('Network.enable')
+        cdp.send('Network.emulateNetworkConditions', {'offline': False, 'latency': SLOW * 25, 'downloadThroughput': -1, 'uploadThroughput': -1})
+    return page
+
+def phone_state(page):
+    """What the lesson page looks like right now: printed next to a failed check, because CI only gives you the log."""
+    return page.evaluate("""() => {
+        const o = document.getElementById('course-outline');
+        const v = document.querySelector('video');
+        const r = v && v.getBoundingClientRect();
+        return {
+            hash: location.hash,
+            outline: o && {cls: o.className, visibility: getComputedStyle(o).visibility, left: Math.round(o.getBoundingClientRect().left)},
+            video: r && {left: Math.round(r.left), right: Math.round(r.right), width: Math.round(r.width)},
+            innerWidth, scrollWidth: document.documentElement.scrollWidth,
+            toggle: !!document.querySelector('button[aria-controls=course-outline]'),
+            loading: !!document.querySelector('[role=status]'),
+        };
+    }""")
 
 def item_id(page):
     m = re.search(r'/item/(\d+)', page.evaluate('location.hash'))
@@ -70,7 +106,7 @@ with sync_playwright() as pw:
     ctx = browser.new_context(viewport={'width': 1100, 'height': 900})
     # external links must not leave the sandbox
     ctx.route('https://example.com/**', lambda r: r.fulfill(status=200, content_type='text/html', body='<h1>example</h1>'))
-    page = ctx.new_page()
+    page = new_page(ctx)
 
     def on_console(m):
         if m.type == 'error':
@@ -439,7 +475,7 @@ with sync_playwright() as pw:
     @step('phone layout and the course-content drawer')
     def _():
         ctx3 = browser.new_context(viewport={'width': 390, 'height': 844}, is_mobile=True, has_touch=True)
-        p3 = ctx3.new_page()
+        p3 = new_page(ctx3)
         p3.on('console', on_console)
         p3.on('pageerror', lambda e: console_errors.append(f'pageerror: {e}'))
         p3.goto(BASE + '/')
@@ -483,15 +519,15 @@ with sync_playwright() as pw:
         toggle.click()
         side.wait_for(state='visible', timeout=4000)
         side.locator('a', has_text='Welcome').click()
-        wait_until(lambda: item_id(p3) == ids['01 - Welcome.webm'], 8, desc='drawer link navigates')
-        p3.locator('button[aria-controls="course-outline"]').wait_for(timeout=8000)
-        check('choosing a lesson in the drawer opens it and closes the drawer', not p3.locator('#course-outline').is_visible())
+        welcome = ids['01 - Welcome.webm']
+        wait_until(lambda: item_id(p3) == welcome, 8, desc='drawer link navigates')
+        # The lesson page is rebuilt for every item. For a moment after the address changes the OLD page is
+        # still on screen (drawer open, its video in place), so wait for the NEW lesson's own player.
+        wait_until(lambda: p3.evaluate('id => { const v = document.querySelector("video"); return !!v && v.getAttribute("src") === "/api/v1/items/" + id + "/stream" }', welcome),
+                   8, desc="the new lesson's player")
+        check('choosing a lesson in the drawer opens it and closes the drawer', not side.is_visible(), phone_state(p3))
         fits = '() => { const v = document.querySelector("video"); return !!v && v.getBoundingClientRect().right <= window.innerWidth + 1 }'
-        try:
-            wait_until(lambda: p3.evaluate(fits), 6, desc='the new lesson to show its video')  # the page may still be loading
-        except AssertionError:
-            pass
-        check('the video fits the phone screen', p3.evaluate(fits))
+        check('the video fits the phone screen', p3.evaluate(fits), phone_state(p3))
         ctx3.close()
 
     @step('settings')
@@ -553,6 +589,10 @@ with sync_playwright() as pw:
         form.locator('input[type=password]').fill('bobpass12')
         form.locator('button:has-text("Create user")').click()
         page.wait_for_selector('[role=status]:has-text("Created bob")', timeout=5000)
+        try:
+            wait_until(lambda: page.locator('tbody tr', has_text='bob').count() == 1, 6, desc='bob in the user list')  # the list reloads after the message
+        except AssertionError:
+            pass
         check('admin can create a user', page.locator('tbody tr', has_text='bob').count() == 1)
         # self-protection
         row = page.locator('tbody tr', has_text='admin').first
@@ -561,7 +601,7 @@ with sync_playwright() as pw:
     @step('second user is isolated')
     def _():
         ctx2 = browser.new_context(viewport={'width': 1100, 'height': 900})
-        p2 = ctx2.new_page()
+        p2 = new_page(ctx2)
         p2.on('console', on_console)
         p2.goto(BASE + '/')
         p2.wait_for_selector('h2:has-text("Sign in")', timeout=8000)
@@ -801,7 +841,7 @@ with sync_playwright() as pw:
         page.set_input_files('.cover-tools input[type=file]', jpg)
         wait_until(lambda: course(pt)['cover_v'] > 0, 8, desc='cover for bob to see')
         ctx_b = browser.new_context(viewport={'width': 1100, 'height': 900})
-        pb = ctx_b.new_page()
+        pb = new_page(ctx_b)
         pb.on('console', on_console)
         pb.goto(BASE + '/')
         pb.wait_for_selector('h2:has-text("Sign in")', timeout=8000)
@@ -983,7 +1023,7 @@ with sync_playwright() as pw:
 
         # a phone: chapters under the player, and in the drawer
         ctx4 = browser.new_context(viewport={'width': 390, 'height': 844}, is_mobile=True, has_touch=True)
-        p4 = ctx4.new_page()
+        p4 = new_page(ctx4)
         p4.on('console', on_console)
         p4.on('pageerror', lambda e: console_errors.append(f'pageerror: {e}'))
         p4.goto(BASE + '/')
