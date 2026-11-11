@@ -1,0 +1,119 @@
+# Lectern: the app and its database, each in its own container.
+#
+#   1. Save the settings template (.env.example in the repository, env.example
+#      on the release page) next to this file as `.env`, and set the passwords
+#      and LECTERN_LIBRARY in it.
+#   2. docker compose up -d
+#
+# The app image comes from GitHub's container registry; nothing is built here.
+# To build it from source instead, add docker-compose.build.yml (see there).
+#
+# Ports, passwords, paths and the version to run all come from .env (see
+# .env.example), so this file normally needs no editing. The database lives in
+# the named volume `lectern-mysql`: `docker compose down` keeps it, `down -v`
+# deletes it.
+name: lectern
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  app:
+    # LECTERN_TAG in .env picks the version: latest (default), a release such as
+    # 1.2.3, or edge. Update with `docker compose pull && docker compose up -d`.
+    image: ghcr.io/rimkomatic/lectern:${LECTERN_TAG:-latest}
+    container_name: lectern-app
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    # The user the app runs as. It has to be able to read your files: run `id -u`
+    # and `id -g` on the server and put the numbers in .env if they are not 1000.
+    user: "${PUID:-1000}:${PGID:-1000}"
+    ports:
+      # <port on this machine>:<port in the container>. With a reverse proxy on
+      # the same machine use "127.0.0.1:${LECTERN_PORT:-8080}:8080" instead.
+      - "${LECTERN_PORT:-8080}:8080"
+    environment:
+      # The database container below. (MYSQL_PORT in .env is the port MySQL has
+      # on the host in development; the app talks to it on 3306 inside Docker.)
+      MYSQL_HOST: mysql
+      MYSQL_PORT: "3306"
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-lectern}
+      MYSQL_USER: ${MYSQL_USER:-lectern}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?set MYSQL_PASSWORD in .env}
+      # In the container the library is always /library (the mount below). More
+      # than one folder? Add a volume for each and list them here, for example
+      # "/library;/library2" or "Work=/library;Home=/library2".
+      LECTERN_LIBRARIES: /library
+      # Left empty these use the built-in defaults. Set them in .env to change.
+      LECTERN_SCAN_INTERVAL: "${LECTERN_SCAN_INTERVAL:-}"
+      LECTERN_MISSING_RETENTION: "${LECTERN_MISSING_RETENTION:-}"
+      LECTERN_SESSION_TTL: "${LECTERN_SESSION_TTL:-}"
+      LECTERN_DONE_THRESHOLD: "${LECTERN_DONE_THRESHOLD:-}"
+      LECTERN_FOLLOW_SYMLINKS: "${LECTERN_FOLLOW_SYMLINKS:-}"
+      LECTERN_TRUST_PROXY: "${LECTERN_TRUST_PROXY:-}"
+      LECTERN_COOKIE_SECURE: "${LECTERN_COOKIE_SECURE:-}"
+      LECTERN_ALLOWED_ORIGINS: "${LECTERN_ALLOWED_ORIGINS:-}"
+      LECTERN_ADMIN_USER: "${LECTERN_ADMIN_USER:-}"
+      LECTERN_ADMIN_PASSWORD: "${LECTERN_ADMIN_PASSWORD:-}"
+      LECTERN_LOG_LEVEL: "${LECTERN_LOG_LEVEL:-}"
+      LECTERN_DB_WAIT: "${LECTERN_DB_WAIT:-}"
+      LECTERN_DB_DSN: "${LECTERN_DB_DSN:-}"
+    volumes:
+      # Your courses, read-only (set LECTERN_LIBRARY in .env; without it this is
+      # the folder ./library next to this file). create_host_path: false turns a
+      # mistyped path into an error instead of a new, empty, root-owned folder.
+      - type: bind
+        source: ${LECTERN_LIBRARY:-./library}
+        target: /library
+        read_only: true
+        bind:
+          create_host_path: false
+    # The app writes no files, so the container can be locked down.
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging: *logging
+
+  mysql:
+    image: mysql:8.4
+    container_name: lectern-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-lectern}
+      MYSQL_USER: ${MYSQL_USER:-lectern}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?set MYSQL_PASSWORD in .env}
+      TZ: UTC
+    # Small-footprint settings for a home server: no binary log, no
+    # performance_schema, a 128 MB buffer pool and a modest connection cap.
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --skip-log-bin
+      - --performance-schema=OFF
+      - --innodb-buffer-pool-size=128M
+      - --max-connections=50
+      - --skip-name-resolve
+    # No ports: only the app container talks to MySQL, over Docker's network.
+    # (docker-compose.dev.yml publishes it on 127.0.0.1 for development.)
+    volumes:
+      - lectern-mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_ROOT_PASSWORD mysqladmin ping -h 127.0.0.1 -u root --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    logging: *logging
+
+volumes:
+  lectern-mysql:

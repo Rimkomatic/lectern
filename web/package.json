@@ -1,0 +1,32 @@
+{
+  "name": "lectern-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "test": "vitest run",
+    "contrast": "node scripts/check-contrast.mjs"
+  },
+  "dependencies": {
+    "dompurify": "^3.4.17",
+    "marked": "^18.2.0",
+    "pdfjs-dist": "^6.5.438"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.3.1",
+    "@tsconfig/svelte": "^5.0.8",
+    "@types/node": "^22.0.0",
+    "jsdom": "^31.0.0",
+    "svelte": "^5.57.3",
+    "svelte-check": "^4.7.8",
+    "typescript": "~5.9.3",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.0"
+  },
+  "engines": {
+    "node": ">=22.13"
+  }
+}

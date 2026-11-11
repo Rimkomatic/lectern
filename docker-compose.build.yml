@@ -1,0 +1,10 @@
+# Builds the app image from this source tree instead of pulling the published
+# one. Use it together with the main file:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+#
+# (CI uses it too: e2e/compose-smoke.sh.) The image is tagged lectern:local.
+services:
+  app:
+    build: .
+    image: lectern:local

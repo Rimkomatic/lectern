@@ -1,0 +1,485 @@
+/* Shared building blocks: layout, buttons, form controls, chips, alerts, cards, tables. */
+
+/* ---------- layout ---------- */
+
+.page {
+  width: 100%;
+  max-width: var(--page-w);
+  margin-inline: auto;
+  padding: clamp(20px, 3.5vw, 44px) var(--pad) 88px;
+}
+.page-narrow {
+  max-width: 920px;
+}
+.page-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem 2rem;
+  margin-bottom: clamp(20px, 3vw, 36px);
+}
+.rise {
+  animation: rise 0.45s var(--ease) both;
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+.muted {
+  color: var(--text-2);
+}
+.eyebrow {
+  margin: 0 0 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.stack {
+  display: grid;
+  gap: var(--gap, 1rem);
+}
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gap, 0.75rem);
+}
+
+/* ---------- buttons: always pills; icon buttons are circles ---------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding: 0 1.2rem;
+  border: 1px solid transparent;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  color: var(--text);
+  font: 600 0.9375rem/1.1 var(--font);
+  letter-spacing: -0.005em;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background-color var(--dur),
+    border-color var(--dur),
+    box-shadow var(--dur),
+    color var(--dur),
+    transform var(--dur) var(--ease);
+}
+.btn:hover {
+  background: var(--surface-3);
+  text-decoration: none;
+}
+.btn:active {
+  transform: scale(0.97);
+}
+.btn:disabled,
+.btn[aria-disabled='true'] {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+.btn:disabled:hover {
+  background: var(--surface-2);
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: 0 8px 20px -10px var(--accent-glow);
+}
+.btn-primary:hover {
+  background: var(--accent-hover);
+}
+.btn-primary:disabled:hover {
+  background: var(--accent);
+}
+.btn-outline {
+  background: transparent;
+  border-color: var(--border-input);
+}
+.btn-outline:hover {
+  background: var(--surface-2);
+}
+.btn-ghost {
+  background: transparent;
+}
+.btn-ghost:hover {
+  background: var(--surface-2);
+}
+.btn-danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.btn-danger:hover {
+  background: var(--danger);
+  color: var(--surface);
+}
+.btn-sm {
+  min-height: 36px;
+  padding: 0 0.95rem;
+  font-size: 0.8125rem;
+}
+.btn-lg {
+  min-height: 54px;
+  padding: 0 1.7rem;
+  font-size: 1rem;
+}
+.btn-icon {
+  width: 44px;
+  padding: 0;
+}
+.btn-icon.btn-sm {
+  width: 36px;
+}
+
+/* ---------- form controls ---------- */
+
+.field {
+  display: grid;
+  gap: 0.4rem;
+  min-width: 0;
+}
+.field > span:first-child,
+.label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.input {
+  width: 100%;
+  min-height: 46px;
+  padding: 0.65rem 1rem;
+  border: 1px solid var(--border-input);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  line-height: 1.3;
+  transition:
+    border-color var(--dur),
+    background-color var(--dur);
+}
+.input::placeholder {
+  color: var(--text-3);
+  opacity: 1;
+}
+.input:hover {
+  border-color: var(--text-2);
+}
+/* One clean ring instead of the page-wide outline: a 2px line plus a soft halo. The transparent
+   outline is what forced-colors (high contrast) modes draw. */
+.input:focus-visible {
+  border-color: var(--focus);
+  outline: 2px solid transparent;
+  box-shadow:
+    0 0 0 1px var(--focus),
+    0 0 0 5px color-mix(in srgb, var(--focus) 24%, transparent);
+}
+.input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.input-sm {
+  min-height: 36px;
+  padding: 0.35rem 0.8rem;
+  font-size: 0.875rem;
+}
+
+/* A select with our own chevron. Wrap it: <span class="select"><select class="input">…</select></span> */
+.select {
+  position: relative;
+  display: inline-block;
+}
+.select > .input {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 2.4rem;
+  border-radius: var(--r-pill);
+  cursor: pointer;
+}
+.select::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: 0.95rem;
+  width: 14px;
+  height: 14px;
+  margin-top: -7px;
+  background: var(--text-2);
+  pointer-events: none;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+/* Native checkbox/radio inputs drawn as a switch / a round radio, still real inputs. */
+input.switch {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: none;
+  position: relative;
+  width: 48px;
+  height: 28px;
+  margin: 0;
+  border: 1px solid var(--border-input);
+  border-radius: var(--r-pill);
+  background: var(--surface-3);
+  cursor: pointer;
+  transition:
+    background-color var(--dur),
+    border-color var(--dur);
+}
+input.switch::before {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--text-2);
+  transition:
+    transform var(--dur) var(--ease),
+    background-color var(--dur);
+}
+input.switch:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+input.switch:checked::before {
+  transform: translateX(20px);
+  background: var(--on-accent);
+}
+
+input.radio {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: none;
+  display: grid;
+  place-content: center;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  border: 2px solid var(--border-input);
+  border-radius: 50%;
+  background: var(--surface);
+  cursor: pointer;
+  transition:
+    background-color var(--dur),
+    border-color var(--dur);
+}
+input.radio::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--on-accent);
+  transform: scale(0);
+  transition: transform var(--dur) var(--ease);
+}
+input.radio:checked {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+input.radio:checked::before {
+  transform: scale(1);
+}
+
+/* A selectable row: <label class="choice"><input class="radio"> text</label> */
+.choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  padding: 0.9rem 1.1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  cursor: pointer;
+  transition:
+    border-color var(--dur),
+    background-color var(--dur);
+}
+.choice:hover {
+  border-color: var(--border-input);
+}
+.choice:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.choice:has(input:focus-visible) {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.choice input {
+  margin-top: 1px;
+}
+.choice small {
+  display: block;
+  color: var(--text-2);
+}
+
+/* A label with a switch on the right. */
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 0;
+  cursor: pointer;
+}
+.toggle-row + .toggle-row {
+  border-top: 1px solid var(--border);
+}
+.toggle-row small {
+  display: block;
+  color: var(--text-2);
+}
+
+fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+legend {
+  padding: 0;
+  margin-bottom: 0.7rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+/* ---------- chips, badges ---------- */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 28px;
+  padding: 0 0.7rem;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.chip-ok {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.chip-accent {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+/* ---------- alerts ---------- */
+
+.alert,
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  padding: 0.85rem 1.1rem;
+  border-radius: var(--r-md);
+  font-weight: 550;
+  font-size: 0.9375rem;
+}
+.alert {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.notice {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.alert > svg,
+.notice > svg {
+  flex: none;
+  margin-top: 1px;
+}
+
+/* ---------- cards and panels ---------- */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+}
+.card-pad {
+  padding: clamp(18px, 2.6vw, 30px);
+}
+
+/* ---------- tables ---------- */
+
+/* A box that scrolls sideways and fades its edges while there is more to see (phones, wide tables). */
+.scroll-x {
+  overflow-x: auto;
+  background:
+    linear-gradient(to right, var(--surface) 30%, transparent) left center / 40px 100% no-repeat local,
+    linear-gradient(to left, var(--surface) 30%, transparent) right center / 40px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, color-mix(in srgb, var(--text) 22%, transparent), transparent) left center / 14px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, color-mix(in srgb, var(--text) 22%, transparent), transparent) right center / 14px 100% no-repeat scroll;
+}
+
+.table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.9375rem;
+}
+.table th {
+  padding: 0.7rem 1rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.table td {
+  padding: 0.8rem 1rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+/* ---------- loading ---------- */
+
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.skeleton {
+  border-radius: var(--r-md);
+  background: linear-gradient(100deg, var(--surface-2) 30%, var(--surface-3) 50%, var(--surface-2) 70%);
+  background-size: 220% 100%;
+  animation: shimmer 1.5s linear infinite;
+}
+@keyframes shimmer {
+  from {
+    background-position: 110% 0;
+  }
+  to {
+    background-position: -110% 0;
+  }
+}

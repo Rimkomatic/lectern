@@ -1,0 +1,23 @@
+# What `docker build` does not send to the daemon. This keeps the build fast and,
+# above all, keeps your .env (passwords) out of the image.
+.git
+.github
+.gitignore
+.env
+.env.*
+**/node_modules
+internal/webui/dist
+bin
+lectern
+lectern.exe
+go.local.mod
+go.local.sum
+e2e
+docker
+docker-compose*.yml
+Makefile
+README.md
+RELEASING.md
+SECURITY.md
+*.log
+**/.DS_Store

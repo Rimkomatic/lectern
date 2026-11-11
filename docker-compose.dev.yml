@@ -1,0 +1,10 @@
+# Extra settings for working on Lectern itself (make db, make run, make test).
+# Used together with the main file: `make db` does
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --wait mysql
+#
+# It publishes MySQL on this machine's loopback, so an app started from source
+# and the tests can reach it. The main file leaves the database unpublished.
+services:
+  mysql:
+    ports:
+      - "127.0.0.1:${MYSQL_PORT:-3306}:3306"

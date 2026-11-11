@@ -1,0 +1,112 @@
+/*
+ * Design tokens. This is the one file to edit to re-skin the app:
+ * colours live in the two theme blocks, the rest are shared.
+ * After changing colours run `npm run contrast` (in web/) to check legibility.
+ */
+
+:root {
+  --font: 'Inter', 'Inter Fallback', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+
+  /* shape: everything interactive is a pill, containers are generously rounded */
+  --r-xs: 8px;
+  --r-sm: 12px;
+  --r-md: 16px;
+  --r-lg: 22px;
+  --r-xl: 30px;
+  --r-pill: 999px;
+
+  /* layout */
+  --nav-h: 64px;
+  --page-w: 1320px;
+  --pad: clamp(16px, 4vw, 44px);
+  --sidebar-w: 384px;
+
+  /* motion */
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --dur: 0.18s;
+
+  /* placeholder covers for courses without a picture (picked by title) */
+  --cover-0: linear-gradient(135deg, #f6b445 0%, #e5603f 100%);
+  --cover-1: linear-gradient(135deg, #2dc3a3 0%, #2a6fdb 100%);
+  --cover-2: linear-gradient(135deg, #8b6cf0 0%, #e0589b 100%);
+  --cover-3: linear-gradient(135deg, #46c26f 0%, #16919a 100%);
+  --cover-4: linear-gradient(135deg, #4f8cf7 0%, #7b4fd8 100%);
+  --cover-5: linear-gradient(135deg, #ef7a5a 0%, #c63f77 100%);
+  --cover-6: linear-gradient(135deg, #9bc53d 0%, #2f9e6b 100%);
+  --cover-7: linear-gradient(135deg, #3fb4e8 0%, #3b5bdb 100%);
+}
+
+/* Light: warm paper, ink text, amber accent. This is also the no-JavaScript default. */
+:root,
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --bg: #f6f4ef;
+  --surface: #ffffff;
+  --surface-2: #efece5;
+  --surface-3: #e6e2d8;
+  --border: #e2ddd1;
+  --border-input: #8c8575;
+
+  --text: #1c1a16;
+  --text-2: #57534a;
+  --text-3: #615d52;
+
+  --accent: #f4a720;
+  --accent-hover: #ffb637;
+  --on-accent: #1c1405;
+  --accent-text: #8f5200;
+  --accent-soft: #fdf1db;
+  --accent-glow: rgb(244 167 32 / 0.55);
+
+  --ok: #17683f;
+  --ok-soft: #e1f3e9;
+  --danger: #b42318;
+  --danger-soft: #fdebe9;
+
+  --focus: #9a5b00;
+  --scrim: rgb(20 18 12 / 0.5);
+  --glass: rgb(246 244 239 / 0.82);
+
+  --shadow-sm: 0 1px 2px rgb(40 30 10 / 0.06), 0 1px 1px rgb(40 30 10 / 0.04);
+  --shadow-md: 0 10px 28px -10px rgb(40 30 10 / 0.2), 0 2px 6px rgb(40 30 10 / 0.06);
+  --shadow-lg: 0 28px 56px -18px rgb(40 30 10 / 0.3), 0 6px 18px rgb(40 30 10 / 0.08);
+}
+
+/* Dark: ink background, warm white text, the same amber. */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --bg: #0d0f12;
+  --surface: #15181d;
+  --surface-2: #1c2027;
+  --surface-3: #252a33;
+  --border: #262b33;
+  --border-input: #667082;
+
+  --text: #ece9e1;
+  --text-2: #b4b0a5;
+  --text-3: #9b978c;
+
+  --accent: #f5b13d;
+  --accent-hover: #ffc35e;
+  --on-accent: #1c1405;
+  --accent-text: #f7c063;
+  --accent-soft: #342d21;
+  --accent-glow: rgb(245 177 61 / 0.35);
+
+  --ok: #4cc38a;
+  --ok-soft: #14281f;
+  --danger: #ff8a80;
+  --danger-soft: #34191a;
+
+  --focus: #f7c063;
+  --scrim: rgb(0 0 0 / 0.62);
+  --glass: rgb(13 15 18 / 0.8);
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.5);
+  --shadow-md: 0 12px 30px -10px rgb(0 0 0 / 0.65), 0 2px 6px rgb(0 0 0 / 0.4);
+  --shadow-lg: 0 30px 60px -18px rgb(0 0 0 / 0.75), 0 6px 18px rgb(0 0 0 / 0.45);
+}

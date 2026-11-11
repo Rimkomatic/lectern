@@ -1,0 +1,19 @@
+# secrets and local settings
+.env
+
+# build output
+/bin/
+/lectern
+/lectern.exe
+internal/webui/dist/*
+!internal/webui/dist/.gitkeep
+
+# node
+node_modules/
+
+# only needed where the Go module proxy cannot be reached
+go.local.mod
+go.local.sum
+
+*.log
+.DS_Store
