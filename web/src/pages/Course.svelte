@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { doneCount, findItem, flatten, isDone, setDone } from '../lib/actions';
+  import { onMount, tick } from 'svelte';
+  import { doneCount, findItem, flatten, hasTracking, isDone, setDone } from '../lib/actions';
   import { api, messageOf } from '../lib/api';
   import { setTitle } from '../lib/brand';
   import { chapterIndexAt, chapterKey } from '../lib/chapters';
@@ -22,11 +22,18 @@
   let busyId = $state<number | null>(null);
   let coverBusy = $state(false);
   let coverInput: HTMLInputElement | undefined = $state();
+  let dropping = $state(false); // "Delete your progress in this course?" is on screen
+  let dropBusy = $state(false);
+  let dropped = $state(false); // the course was just dropped: say so
+  let dropBtn: HTMLButtonElement | undefined = $state();
+  let keepBtn: HTMLButtonElement | undefined = $state();
+  let dropNote: HTMLParagraphElement | undefined = $state();
 
   const isAdmin = $derived(session.user?.role === 'admin');
   const first = $derived(tree ? flatten(tree.sections)[0] : undefined);
   const counts = $derived(tree ? doneCount(tree.sections) : { done: 0, total: 0 });
   const mode = $derived(session.settings.resume_mode);
+  const trackable = $derived(tree ? hasTracking(tree) : false);
 
   onMount(() => {
     void load();
@@ -76,6 +83,42 @@
       error = messageOf(err);
     } finally {
       coverBusy = false;
+    }
+  }
+
+  /** Asks first. The safe answer, "No", gets the focus. */
+  async function askDrop() {
+    dropping = true;
+    dropped = false;
+    await tick();
+    keepBtn?.focus();
+  }
+
+  async function keepCourse() {
+    dropping = false;
+    await tick();
+    dropBtn?.focus();
+  }
+
+  /** Deletes this person's progress in the course, then shows it as it is now: not started. */
+  async function dropCourse() {
+    const t = tree;
+    if (!t || dropBusy) return;
+    dropBusy = true;
+    error = '';
+    try {
+      await api.dropCourse(t.course.id);
+      dropping = false;
+      await load();
+      if (!error) {
+        dropped = true;
+        await tick();
+        dropNote?.focus();
+      }
+    } catch (e) {
+      error = messageOf(e);
+    } finally {
+      dropBusy = false;
     }
   }
 
@@ -178,9 +221,52 @@
 
         <div class="prog">
           <ProgressBar value={percent(counts.done, counts.total)} label="Course progress" />
-          <span class="prog-text">
-            {percent(counts.done, counts.total)}% complete · {counts.done}/{counts.total} items
-          </span>
+          <div class="prog-row">
+            <span class="prog-text">
+              {percent(counts.done, counts.total)}% complete · {counts.done}/{counts.total} items
+            </span>
+            {#if trackable}
+              <div class="drop">
+                {#if dropping}
+                  <span class="drop-q" id="drop-q">Delete your progress in this course?</span>
+                  <button
+                    type="button"
+                    class="btn btn-danger btn-sm"
+                    aria-describedby="drop-q"
+                    disabled={dropBusy}
+                    onclick={dropCourse}
+                  >
+                    {dropBusy ? 'Dropping…' : 'Yes, drop it'}
+                  </button>
+                  <button
+                    bind:this={keepBtn}
+                    type="button"
+                    class="btn btn-ghost btn-sm"
+                    aria-describedby="drop-q"
+                    disabled={dropBusy}
+                    onclick={keepCourse}
+                  >
+                    No
+                  </button>
+                {:else}
+                  <button
+                    bind:this={dropBtn}
+                    type="button"
+                    class="btn btn-ghost btn-sm"
+                    title="Stop tracking this course and delete your progress in it"
+                    onclick={askDrop}
+                  >
+                    <Icon name="x" size={14} />Drop course
+                  </button>
+                {/if}
+              </div>
+            {/if}
+          </div>
+          {#if dropped && !trackable}
+            <p class="drop-note" role="status" tabindex="-1" bind:this={dropNote}>
+              Course dropped. Your progress in it is deleted; the course stays in the library.
+            </p>
+          {/if}
         </div>
 
         {#if error}
@@ -349,6 +435,29 @@
     color: var(--text-2);
     font-size: 0.875rem;
     font-variant-numeric: tabular-nums;
+  }
+  .prog-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px 12px;
+  }
+  .drop {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 8px;
+  }
+  .drop-q {
+    color: var(--danger);
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+  .drop-note {
+    margin: 0;
+    color: var(--text-2);
+    font-size: 0.875rem;
   }
 
   .resume {

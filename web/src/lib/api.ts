@@ -86,6 +86,8 @@ export const api = {
   courses: (q = '') => request<CourseSummary[]>('GET', '/courses' + (q ? `?q=${encodeURIComponent(q)}` : '')),
   course: (id: number) => request<CourseTree>('GET', `/courses/${id}`),
   continue: () => request<ContinueEntry[]>('GET', '/continue'),
+  /** Deletes the signed-in person's progress in one course; the course stays. */
+  dropCourse: (id: number) => request<void>('DELETE', `/courses/${id}/progress`),
   item: (id: number) => request<ItemDetail>('GET', `/items/${id}`),
   progress: (id: number, body: ProgressBody) =>
     request<{ progress: Progress }>('POST', `/items/${id}/progress`, body),

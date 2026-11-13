@@ -63,6 +63,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET "+v1+"/courses", s.authed(s.listCourses))
 	mux.HandleFunc("GET "+v1+"/courses/{id}", s.authed(s.getCourse))
 	mux.HandleFunc("GET "+v1+"/courses/{id}/cover", s.authed(s.getCover))
+	mux.HandleFunc("DELETE "+v1+"/courses/{id}/progress", s.authed(s.dropCourse))
 	mux.HandleFunc("GET "+v1+"/continue", s.authed(s.getContinue))
 
 	mux.HandleFunc("GET "+v1+"/items/{id}", s.authed(s.getItem))

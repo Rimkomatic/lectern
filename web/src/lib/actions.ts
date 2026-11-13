@@ -2,7 +2,7 @@ import { api } from './api';
 import { chapterFraction, chapterIndexAt, doneChapters, hasChapters } from './chapters';
 import { formatBytes, formatDuration } from './format';
 import type { IconName } from './icons';
-import type { Item, Kind, Progress, Section } from './types';
+import type { CourseTree, Item, Kind, Progress, Section } from './types';
 
 /** Marks an item done or not done. Returns the server's merged progress. */
 export async function setDone(itemId: number, done: boolean): Promise<Progress> {
@@ -33,6 +33,16 @@ export function lessonsDone(item: Item): number {
 /** True for a course that is just a list of files: no folders, only the implicit section. */
 export function isFlat(sections: Section[]): boolean {
   return sections.length === 1 && sections[0].loose === true;
+}
+
+/**
+ * Whether this person has anything recorded in the course: a lesson opened or
+ * finished, a chapter ticked, or a place to continue from. "Drop course" is
+ * only offered then, since there is nothing to delete otherwise.
+ */
+export function hasTracking(tree: CourseTree): boolean {
+  if (tree.course.last_seen_at) return true;
+  return flatten(tree.sections).some((it) => it.progress !== null || doneChapters(it.chapters ?? []) > 0);
 }
 
 /** All items of a course in learning order. */

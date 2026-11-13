@@ -3,6 +3,7 @@ import {
   doneCount,
   followItem,
   fraction,
+  hasTracking,
   isFlat,
   itemMeta,
   kindIcon,
@@ -12,7 +13,7 @@ import {
   statusKey,
   statusLabel,
 } from './actions';
-import type { Chapter, Item, Progress, Section } from './types';
+import type { Chapter, CourseTree, Item, Progress, Section } from './types';
 
 function item(over: Partial<Item> = {}, progress: Partial<Progress> | null = null): Item {
   return {
@@ -188,5 +189,42 @@ describe('isFlat', () => {
     expect(isFlat([sec({ title: 'Part 1' })])).toBe(false);
     expect(isFlat([sec()])).toBe(false);
     expect(isFlat([])).toBe(false);
+  });
+});
+
+describe('hasTracking', () => {
+  const chapter = (start: number, done: boolean): Chapter => ({ start, title: `c${start}`, done });
+  const tree = (items: Item[], lastSeen: string | null = null): CourseTree => ({
+    course: {
+      id: 1,
+      title: 'Course',
+      description: '',
+      library: 'Main',
+      has_cover: false,
+      cover_v: 0,
+      item_count: items.length,
+      done_count: 0,
+      duration_s: 0,
+      last_seen_at: lastSeen,
+    },
+    sections: [{ id: 1, title: 'Part 1', ord: 1, items }],
+    resume: null,
+    completed: false,
+  });
+
+  it('is false for a course nobody has touched', () => {
+    expect(hasTracking(tree([item({ id: 1 }), item({ id: 2 })]))).toBe(false);
+    expect(hasTracking(tree([]))).toBe(false);
+  });
+  it('is true once the person has a place to continue from', () => {
+    expect(hasTracking(tree([item()], '2026-11-13T10:00:00Z'))).toBe(true);
+  });
+  it('is true for a lesson that was opened, or marked done by hand', () => {
+    expect(hasTracking(tree([item({ id: 1 }), item({ id: 2 }, { state: 'started' })]))).toBe(true);
+    expect(hasTracking(tree([item({ id: 1 }, { state: 'done' })]))).toBe(true);
+  });
+  it('is true for a ticked chapter, false for chapters nobody ticked', () => {
+    expect(hasTracking(tree([item({ chapters: [chapter(0, false), chapter(60, true)] })]))).toBe(true);
+    expect(hasTracking(tree([item({ chapters: [chapter(0, false), chapter(60, false)] })]))).toBe(false);
   });
 });

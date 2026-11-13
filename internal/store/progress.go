@@ -309,3 +309,61 @@ func ComputeResume(sections []Section, lastItemID uint64) (*Resume, bool) {
 	}
 	return nil, false
 }
+
+// DropCourse deletes what one person has recorded about one course: the state
+// of every item (also of files that vanished from the folder and are only kept
+// for a while), their finished chapters, and the "where I was" entry behind the
+// continue-learning row. Other people's progress, the course and its files are
+// not touched. A course with nothing recorded is fine, so dropping can be
+// repeated. ErrNotFound is a course this person cannot see (unknown, its
+// library switched off, or gone from disk).
+//
+// Like ApplyProgress, a deadlock with a report from another tab is rolled back
+// by MySQL and simply tried again.
+func (s *Store) DropCourse(ctx context.Context, userID, courseID uint64) error {
+	var visible bool
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT EXISTS (SELECT 1 FROM courses c JOIN libraries l ON l.id = c.library_id
+		                WHERE c.id = ? AND c.missing_at IS NULL AND l.enabled = 1)`, courseID).Scan(&visible); err != nil {
+		return err
+	}
+	if !visible {
+		return ErrNotFound
+	}
+	var lastErr error
+	for attempt := 0; attempt < 4; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(time.Duration(attempt) * 25 * time.Millisecond):
+			}
+		}
+		err := s.dropCourseOnce(ctx, userID, courseID)
+		if err == nil || !IsRetryable(err) {
+			return err
+		}
+		lastErr = err
+	}
+	return lastErr
+}
+
+func (s *Store) dropCourseOnce(ctx context.Context, userID, courseID uint64) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	// The order in which ApplyProgress takes its locks: the items' state, then
+	// the chapters, then the course entry.
+	for _, q := range []string{
+		`DELETE p FROM progress p JOIN items i ON i.id = p.item_id WHERE p.user_id = ? AND i.course_id = ?`,
+		`DELETE cp FROM chapter_progress cp JOIN items i ON i.id = cp.item_id WHERE cp.user_id = ? AND i.course_id = ?`,
+		`DELETE FROM course_state WHERE user_id = ? AND course_id = ?`,
+	} {
+		if _, err := tx.ExecContext(ctx, q, userID, courseID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}

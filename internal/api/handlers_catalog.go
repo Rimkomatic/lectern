@@ -133,6 +133,22 @@ func (s *Server) postProgress(w http.ResponseWriter, r *http.Request, a *authCtx
 	return nil
 }
 
+// dropCourse is "drop this course": the caller's progress, finished chapters
+// and continue-learning entry for one course are deleted. The course and
+// everybody else's progress stay. It answers 204 every time, so a repeated or
+// double-tapped request is harmless.
+func (s *Server) dropCourse(w http.ResponseWriter, r *http.Request, a *authCtx) error {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return err
+	}
+	if err := s.Store.DropCourse(r.Context(), a.User.ID, id); err != nil {
+		return err
+	}
+	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
 // ---- chapters ----
 
 // chaptersBody names chapters by their start in whole seconds, the way the

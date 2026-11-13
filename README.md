@@ -306,6 +306,13 @@ Name the file after the video with `.chapters.txt` (or `.timestamps.txt`):
   automatically, or to always start from the beginning.
 - Autoplay of the next video (with a 5 second countdown) and the playback speed
   are per-person settings too.
+- **Dropping a course.** On a course page, "Drop course" (with a Yes/No
+  question first) deletes your progress in that course: every item's state,
+  ticked chapters, and the place to continue from. It then shows as not started
+  and leaves "Continue learning". Nothing else changes: the course and its files
+  stay in the library, other people's progress is untouched, and there is no
+  undo. The button only appears when you have something recorded there. If you
+  start the course again, it starts from nothing.
 - Renaming a course folder, or renaming or moving a file, keeps its progress.
   Files that disappear keep theirs for 30 days (`LECTERN_MISSING_RETENTION`) in
   case a drive was just unmounted, and an empty or unmounted library never

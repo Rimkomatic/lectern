@@ -1286,6 +1286,113 @@ with sync_playwright() as pw:
                if ('Content Security Policy' in e or 'Refused to' in e) and 'inline event handler' not in e]
         check('the browser blocked nothing along the way', not csp, csp)
 
+    @step('dropping a course deletes your progress in it, and only yours')
+    def _():
+        pt, gbid, ll = ids['Python Tips'], gb(), ids['Long Lecture']
+        tip, lid = ids['01 - Tip One.ogg'], ids['Long Lecture.webm']
+        now = lambda: int(time.time() * 1000)
+        listen = lambda p, pos: api(p, f'/items/{tip}/progress', 'POST', {'event': 'heartbeat', 'position': pos, 'duration': 15, 'client_ts': now()})
+        course_of = lambda p, cid: api(p, f'/courses/{cid}')['body']
+        continuing = lambda p: [e['course']['title'] for e in api(p, '/continue')['body']]
+        active = lambda: page.evaluate('() => document.activeElement ? document.activeElement.textContent.trim() : ""')
+        note = 'p[role=status]:has-text("Course dropped")'
+
+        # The admin and Bob have both listened a little to Python Tips.
+        listen(page, 4)
+        ctx_b = browser.new_context(viewport={'width': 1100, 'height': 900})
+        pb = new_page(ctx_b)
+        pb.on('console', on_console)
+        pb.goto(BASE + '/')
+        pb.wait_for_selector('h2:has-text("Sign in")', timeout=8000)
+        pb.fill('input[name=username]', 'bob')
+        pb.fill('input[name=password]', 'bobpass12')
+        pb.click('button:has-text("Sign in")')
+        pb.wait_for_selector('h1:has-text("Courses")', timeout=8000)
+        listen(pb, 7)
+        welcome = ids['01 - Welcome.webm']
+        api(pb, f'/items/{welcome}/progress', 'POST', {'event': 'heartbeat', 'position': 9, 'duration': 40, 'client_ts': now()})
+        check('before dropping, both have it under "continue learning"', 'Python Tips' in continuing(page) and 'Python Tips' in continuing(pb), [continuing(page), continuing(pb)])
+
+        # a course Bob never touched offers him nothing to drop
+        goto_hash(pb, f"#/course/{ids['Flat Videos']}")
+        pb.wait_for_selector('h1:has-text("Flat Videos")', timeout=8000)
+        pb.wait_for_selector('section[aria-label="Resume"]', timeout=8000)
+        check('a course without progress has no "Drop course" button', pb.locator('button:has-text("Drop course")').count() == 0)
+
+        # ask, say no
+        goto_hash(page, f'#/course/{pt}')
+        page.wait_for_selector('h1:has-text("Python Tips")', timeout=8000)
+        page.wait_for_selector('button:has-text("Drop course")', timeout=5000)
+        check('a course with progress offers "Drop course"', page.locator('button:has-text("Drop course")').count() == 1)
+        page.click('button:has-text("Drop course")')
+        page.wait_for_selector('text=Delete your progress in this course?', timeout=4000)
+        wait_until(lambda: active() == 'No', 3, desc='the safe answer has the focus')
+        check('it asks first, and "No" has the focus', True)
+        page.keyboard.press('Enter')
+        page.wait_for_selector('button:has-text("Drop course")', timeout=4000)
+        wait_until(lambda: 'Drop course' in active(), 3, desc='focus back on the button')
+        check('"No" (by keyboard) changes nothing and the focus goes back to the button', page.locator('text=Delete your progress in this course?').count() == 0)
+        check('the progress is still there after "No"', course_of(page, pt)['course']['last_seen_at'] is not None)
+
+        # ask, say yes
+        page.click('button:has-text("Drop course")')
+        page.click('button:has-text("Yes, drop it")')
+        page.wait_for_selector(note, timeout=8000)
+        check('"Yes, drop it" says the course was dropped', True)
+        wait_until(lambda: page.evaluate('() => document.activeElement && document.activeElement.getAttribute("role")') == 'status', 3, desc='focus on the note')
+        tr = course_of(page, pt)
+        its = [it for s in tr['sections'] for it in s['items']]
+        check('nothing is left for this person in that course', tr['course']['last_seen_at'] is None and tr['resume'] is None and all(it['progress'] is None for it in its), tr['course'])
+        check('the course page shows it as not started', page.locator('.prog-text').inner_text().strip().startswith('0% complete')
+              and page.locator('section[aria-label="Resume"] a:has-text("Start course")').count() == 1)
+        check('and there is nothing left to drop', page.locator('button:has-text("Drop course")').count() == 0)
+        check('the files are still there', len(its) == 1 and its[0]['name'] == '01 - Tip One.ogg', [i['name'] for i in its])
+        check('it left the continue-learning row of the person who dropped it', 'Python Tips' not in continuing(page), continuing(page))
+        check("but not Bob's", 'Python Tips' in continuing(pb), continuing(pb))
+        check("and Bob's place in it is untouched", (progress(pb, tip) or {}).get('position') == 7, progress(pb, tip))
+        goto_hash(page, '#/')
+        page.wait_for_selector('ul[aria-label="All courses"] li', timeout=8000)
+        check('home no longer shows it under "Continue learning"', page.locator('section[aria-label="Continue learning"]', has_text='Python Tips').count() == 0)
+
+        # a finished course can be dropped too (the earlier step finished Go Basics)
+        goto_hash(page, f'#/course/{gbid}')
+        page.wait_for_selector('text=You have completed this course', timeout=8000)
+        page.click('button:has-text("Drop course")')
+        page.click('button:has-text("Yes, drop it")')
+        page.wait_for_selector(note, timeout=8000)
+        check('a completed course can be dropped', page.locator('text=You have completed this course').count() == 0
+              and page.locator('section[aria-label="Resume"] a:has-text("Start course")').count() == 1)
+        goto_hash(page, '#/')
+        page.wait_for_selector('ul[aria-label="All courses"] li', timeout=8000)
+        wait_until(lambda: '0%' in page.locator('ul[aria-label="All courses"] li', has_text='Go Basics').inner_text(), 5, desc='home shows 0 %')
+        check('home shows it at 0% again', True)
+        check("Bob's place in Go Basics is untouched too", (progress(pb, welcome) or {}).get('position') == 9, progress(pb, welcome))
+
+        # ticked chapters go with it; asking twice is harmless
+        r = api(page, f'/items/{lid}/chapters', 'POST', {'done': [0]})
+        check('a chapter of the lecture is ticked', r['status'] == 200 and r['body']['chapters'][0]['done'] is True, r)
+        r1, r2 = api(page, f'/courses/{ll}/progress', 'DELETE'), api(page, f'/courses/{ll}/progress', 'DELETE')
+        check('the API answers 204 each time', (r1['status'], r2['status']) == (204, 204), (r1, r2))
+        item = api(page, f'/items/{lid}')['body']['item']
+        check('ticked chapters and the item state are gone', item['progress'] is None and not any(c['done'] for c in item['chapters']), item)
+
+        # on a phone the question and its buttons fit the screen
+        listen(page, 4)
+        page.set_viewport_size({'width': 390, 'height': 800})
+        goto_hash(page, f'#/course/{pt}')
+        page.wait_for_selector('button:has-text("Drop course")', timeout=8000)
+        page.click('button:has-text("Drop course")')
+        page.wait_for_selector('button:has-text("Yes, drop it")', timeout=4000)
+        fit = page.evaluate("""() => {
+            const els = ['#drop-q', '.drop button'].flatMap(s => Array.from(document.querySelectorAll(s)));
+            return {wide: document.documentElement.scrollWidth > innerWidth,
+                    out: els.filter(e => { const r = e.getBoundingClientRect(); return r.left < 0 || r.right > innerWidth + 0.5 }).map(e => e.textContent.trim())};
+        }""")
+        check('on a phone the question and both buttons fit the screen', not fit['wide'] and not fit['out'], fit)
+        page.click('.drop button:has-text("No")')
+        page.set_viewport_size({'width': 1100, 'height': 900})
+        ctx_b.close()
+
     browser.close()
 
 ok = sum(1 for r in results if r[0])
