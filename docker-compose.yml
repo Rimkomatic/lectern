@@ -50,7 +50,9 @@ services:
       # "/library;/library2" or "Work=/library;Home=/library2".
       LECTERN_LIBRARIES: /library
       # Left empty these use the built-in defaults. Set them in .env to change.
+      LECTERN_SCAN_AT: "${LECTERN_SCAN_AT:-}"
       LECTERN_SCAN_INTERVAL: "${LECTERN_SCAN_INTERVAL:-}"
+      TZ: "${TZ:-}"
       LECTERN_MISSING_RETENTION: "${LECTERN_MISSING_RETENTION:-}"
       LECTERN_SESSION_TTL: "${LECTERN_SESSION_TTL:-}"
       LECTERN_DONE_THRESHOLD: "${LECTERN_DONE_THRESHOLD:-}"

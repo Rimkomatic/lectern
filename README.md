@@ -56,8 +56,10 @@ image.
    `LECTERN_ADMIN_USER` and `LECTERN_ADMIN_PASSWORD` in `.env` to have it
    created at start-up.
 
-Courses appear after the first scan, which runs at start-up and then every 15
-minutes (Admin → Scan now to run it at once).
+Courses appear after the first scan, which runs at start-up. After that the
+library is scanned once a day, at 03:00 (set `TZ` in `.env` to your time zone;
+see Settings). A course you add later shows up after that scan, or at once with
+Admin → Scan now.
 
 ### Day to day
 
@@ -220,11 +222,28 @@ go run ./cmd/lectern     # reads .env from the current folder
   the browser: **Change cover** on the course page (see "Look and feel").
 - Links are `.url` (Windows), `.webloc` (macOS) or `.desktop` (Linux) files that
   hold an http or https address.
-- Subtitles are `.srt` or `.vtt` files with the video's name, optionally with a
-  language code: `Welcome.en.srt`.
+- Subtitles are `.srt` or `.vtt` files in the same folder as the video, named
+  after it and optionally followed by a language: `Welcome.en.srt`,
+  `Welcome.English.srt`, `Welcome.pt-BR.forced.srt`, `Welcome (Spanish).srt`.
+  Words such as `subs`, `CC` or `SDH` are ignored. UTF-8 and UTF-16 files both
+  work. When a folder holds a single video, a subtitle named only for its
+  language (`English.srt`, `subtitles.srt`) goes with it. A subtitle that
+  matches no video is not shown as a lesson; Admin → Library scan lists it, so
+  you can rename it. (In a folder with no video at all it stays a text lesson.)
+- In the player, **C** switches captions on and off, and the player remembers
+  your choice on that device, so the next lesson starts the same way.
 - What the player shows: video and audio play, PDFs render page by page,
-  images, Markdown, text, code and CSV display. Spreadsheets (xlsx, ods, …),
-  Office files, archives and everything else are listed with a download button.
+  images, Markdown, HTML pages, text, code and CSV display. Spreadsheets (xlsx,
+  ods, …), Office files, archives and everything else are listed with a
+  download button.
+- Markdown (`.md`) and HTML (`.html`, `.htm`, and `.txt` files that were saved
+  from a web page) are shown formatted, with a **Source** switch. They are
+  cleaned first: scripts, styles, forms, frames and the page's own ids and
+  classes are removed, and links open in a new tab. Pictures stored in the
+  course beside the page (`images/diagram.png`) are shown. Pictures hosted on
+  other web sites are never loaded; a note says how many were left out. Links
+  to other pages of the course are not followed. Files in UTF-8, UTF-16 or
+  Windows-1252 (and the encoding an HTML page declares) are read correctly.
 - Hidden files, `Thumbs.db`, `@eaDir`, half-downloaded files (`.part`,
   `.crdownload`, …) and similar clutter are skipped.
 - Symbolic links are followed only when they stay inside the library, unless
@@ -351,7 +370,9 @@ folder it starts in (real environment variables win). In Docker you only edit
 | `MYSQL_PASSWORD` | required | |
 | `LECTERN_LIBRARIES` | `/library` | folders to scan, separated by `;`, each with an optional label: `Work=/mnt/a;/mnt/b` |
 | `LECTERN_LISTEN` | `:8080` | address to listen on |
-| `LECTERN_SCAN_INTERVAL` | `15m` | `0` scans only at start-up and on request |
+| `LECTERN_SCAN_AT` | `03:00` | time of the daily automatic scan, 24-hour `HH:MM`; `off` turns automatic scans off (the start-up scan and Scan now stay) |
+| `LECTERN_SCAN_INTERVAL` | | scan every so often instead of daily (`30m`, `6h`); use this or `LECTERN_SCAN_AT`, not both |
+| `TZ` | UTC | your time zone, for example `Europe/Berlin`; the daily scan runs at `LECTERN_SCAN_AT` in this zone. Docker: set it in `.env`. Without Docker the machine's own time zone is used |
 | `LECTERN_TRUST_PROXY` | `false` | set to `true` behind a reverse proxy, see below |
 
 Read by `docker compose` only, not by the app:
@@ -473,12 +494,14 @@ The compose file keeps the data in the volume `lectern-mysql`.
 ## Not done yet
 
 No PWA or offline mode, no full-text search, no single sign-on (OIDC or proxy headers), no "download the whole
-course" zip, no file-system watcher (scans are periodic), no in-browser preview
+course" zip, no file-system watcher (scans run once a night and on request), no in-browser preview
 of spreadsheets, no translations, argon2id instead of the current
 PBKDF2-HMAC-SHA256 (600,000 rounds) for passwords, no way to edit course
-details in the interface (use `course.json`), Markdown files cannot show
-images stored next to them, and chapters embedded in the video file itself (MP4
-or MKV) or in YouTube `.info.json` files are not read, only `.chapters.txt`.
+details in the interface (use `course.json`), HTML pages show without their own
+styling, scripts or links to other files of the course, subtitles must sit in
+the same folder as their video, and chapters embedded in the video file itself
+(MP4 or MKV) or in YouTube `.info.json` files are not read, only
+`.chapters.txt`.
 
 ## License
 

@@ -133,6 +133,61 @@ func (s *Server) streamItem(w http.ResponseWriter, r *http.Request, a *authCtx) 
 	return s.serveLoc(w, r, loc, true)
 }
 
+// assetExts are the pictures a text page may show from its own folder. SVG is
+// left out on purpose: opened on its own it could run script in this origin.
+var assetExts = map[string]bool{"png": true, "jpg": true, "jpeg": true, "gif": true, "webp": true, "avif": true, "bmp": true}
+
+// assetPath resolves ref, a reference written in a page ("images/a.png"),
+// against the folder of the page itself. The result is relative to the course
+// folder; ok is false for anything that is not a plain file reference or that
+// would leave the course.
+func assetPath(itemRel, ref string) (rel string, ok bool) {
+	ref = strings.ReplaceAll(ref, "\\", "/") // pages written on Windows
+	if i := strings.IndexAny(ref, "?#"); i >= 0 {
+		ref = ref[:i]
+	}
+	if ref == "" || len(ref) > 1024 || strings.ContainsRune(ref, 0) || strings.Contains(ref, "://") || strings.HasPrefix(ref, "//") {
+		return "", false
+	}
+	if strings.HasPrefix(ref, "/") {
+		rel = path.Clean(strings.TrimLeft(ref, "/")) // from the course folder
+	} else {
+		rel = path.Join(path.Dir(itemRel), ref)
+	}
+	if rel == "." || rel == ".." || strings.HasPrefix(rel, "../") {
+		return "", false
+	}
+	return rel, true
+}
+
+// getItemAsset serves a picture that a text page refers to, looked up beside
+// that page and never outside its course folder. It lets the images of an HTML
+// or Markdown lesson show up, with the same sign-in as the page itself.
+func (s *Server) getItemAsset(w http.ResponseWriter, r *http.Request, a *authCtx) error {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return err
+	}
+	loc, err := s.Store.ItemFile(r.Context(), id)
+	if err != nil {
+		return err
+	}
+	if loc.Kind == "link" || loc.ItemRel == "" {
+		return notFound()
+	}
+	rel, ok := assetPath(loc.ItemRel, r.URL.Query().Get("path"))
+	if !ok {
+		return notFound()
+	}
+	ext := strings.ToLower(strings.TrimPrefix(path.Ext(rel), "."))
+	if !assetExts[ext] {
+		return notFound()
+	}
+	asset := *loc
+	asset.ItemRel, asset.Name, asset.Ext, asset.Kind, asset.Mime = rel, path.Base(rel), ext, "image", scan.Classify(ext).Mime
+	return s.serveLoc(w, r, &asset, true)
+}
+
 func (s *Server) downloadItem(w http.ResponseWriter, r *http.Request, a *authCtx) error {
 	id, err := pathID(r, "id")
 	if err != nil {
