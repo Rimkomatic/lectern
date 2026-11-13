@@ -68,6 +68,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET "+v1+"/items/{id}", s.authed(s.getItem))
 	mux.HandleFunc("GET "+v1+"/items/{id}/stream", s.authed(s.streamItem))
 	mux.HandleFunc("GET "+v1+"/items/{id}/download", s.authed(s.downloadItem))
+	mux.HandleFunc("GET "+v1+"/items/{id}/asset", s.authed(s.getItemAsset))
 	mux.HandleFunc("POST "+v1+"/items/{id}/progress", s.authed(s.postProgress))
 	mux.HandleFunc("POST "+v1+"/items/{id}/chapters", s.authed(s.postChapters))
 	mux.HandleFunc("GET "+v1+"/subtitles/{id}", s.authed(s.getSubtitle))

@@ -2,7 +2,8 @@
 # Browser smoke test. Builds the web app and the server, starts the server on
 # the TEST database, generates a small sample library and drives the UI with
 # headless Chrome (setup, login, playback and resume, PDF, notes, tables,
-# images, links, downloads, settings, admin, a second user).
+# images, links, downloads, settings, admin, a second user, a course dropped
+# into the library with HTML pages and subtitles).
 #
 # WARNING: this EMPTIES the database named by LECTERN_TEST_DB_NAME (default
 # "lectern_test", the one `go test` uses). Do not point it at real data.
@@ -41,11 +42,16 @@ go run ./e2e/resetdb
 echo "== sample library"
 python3 e2e/make_library.py "$WORK/library"
 
+# A nightly scan 12 hours from now: the schedule is on (and shown in the admin
+# page) but cannot fire while the test runs.
+export E2E_SCAN_AT="$(python3 -c 'import datetime as d; print((d.datetime.now() + d.timedelta(hours=12)).strftime("%H:%M"))')"
+export E2E_LIBRARY="$WORK/library"
+
 echo "== starting the server on :$PORT"
 (
   cd "$WORK" # so no .env from the project is picked up
   LECTERN_LISTEN="127.0.0.1:$PORT" LECTERN_LIBRARIES="$WORK/library" \
-    LECTERN_COOKIE_SECURE=false LECTERN_SCAN_INTERVAL=0 \
+    LECTERN_COOKIE_SECURE=false LECTERN_SCAN_AT="$E2E_SCAN_AT" \
     exec ./lectern >server.log 2>&1
 ) &
 SERVER_PID=$!

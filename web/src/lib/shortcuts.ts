@@ -1,5 +1,6 @@
 // Keyboard shortcuts for the audio/video player: Space plays or pauses, ←/→
-// skip back and forward, ↑/↓ change the volume. They work wherever the focus is
+// skip back and forward, ↑/↓ change the volume, C turns captions on or off.
+// They work wherever the focus is
 // on the lesson page; only text fields and the controls that use those keys
 // themselves keep them. The logic lives here so it can be tested without a
 // browser; VideoPlayer.svelte does the actual listening.
@@ -11,7 +12,8 @@ export const VOLUME_STEP = 0.05;
 export type PlayerAction =
   | { kind: 'toggle' }
   | { kind: 'skip'; seconds: number } // negative = back
-  | { kind: 'volume'; delta: number };
+  | { kind: 'volume'; delta: number }
+  | { kind: 'captions' }; // switch the subtitles on or off
 
 /** The parts of a keyboard event that decide what it means. */
 export interface KeyFacts {
@@ -86,6 +88,10 @@ export function actionFor(k: KeyFacts, target: TargetFacts, keyboardDriven: bool
       break;
     case 'ArrowDown':
       action = { kind: 'volume', delta: -VOLUME_STEP };
+      break;
+    case 'c': // (a capital C is Caps Lock; Shift+C is left alone above)
+    case 'C':
+      action = { kind: 'captions' };
       break;
     default:
       return null;

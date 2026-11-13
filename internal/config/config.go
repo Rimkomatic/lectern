@@ -32,7 +32,10 @@ type Config struct {
 	DB               DB
 	DBWait           time.Duration
 	Libraries        []Library
-	ScanInterval     time.Duration // 0 disables periodic scans (boot + manual only)
+	ScanDaily        bool // scan once a day (the default) ...
+	ScanAtHour       int  // ... at this time of day, server time (default 03:00)
+	ScanAtMinute     int
+	ScanInterval     time.Duration // > 0: scan this often instead; with ScanDaily off too: only at start-up and on request
 	MissingRetention time.Duration // how long vanished items keep their progress
 	SessionTTL       time.Duration
 	CookieSecure     string // auto | true | false
@@ -70,7 +73,7 @@ func Load() (*Config, error) {
 	if c.Libraries, err = ParseLibraries(env("LECTERN_LIBRARIES", "/library")); err != nil {
 		return nil, err
 	}
-	if c.ScanInterval, err = envDuration("LECTERN_SCAN_INTERVAL", 15*time.Minute); err != nil {
+	if err = c.loadScanSchedule(); err != nil {
 		return nil, err
 	}
 	if c.MissingRetention, err = envDuration("LECTERN_MISSING_RETENTION", 30*24*time.Hour); err != nil {
@@ -106,6 +109,73 @@ func Load() (*Config, error) {
 	c.AdminPassword = env("LECTERN_ADMIN_PASSWORD", "")
 	c.LogLevel = strings.ToLower(env("LECTERN_LOG_LEVEL", "info"))
 	return c, nil
+}
+
+// loadScanSchedule reads LECTERN_SCAN_AT (a time of day, the default being
+// 03:00) and LECTERN_SCAN_INTERVAL (the older setting: scan this often). They
+// are two ways to say the same thing, so setting both is an error rather than
+// a guess.
+func (c *Config) loadScanSchedule() error {
+	every, at := env("LECTERN_SCAN_INTERVAL", ""), env("LECTERN_SCAN_AT", "")
+	switch {
+	case every != "" && at != "":
+		return errors.New("set LECTERN_SCAN_AT (scan once a day) or LECTERN_SCAN_INTERVAL (scan every so often), not both")
+	case every != "":
+		d, err := ParseDuration(every)
+		if err != nil {
+			return fmt.Errorf("LECTERN_SCAN_INTERVAL: %w", err)
+		}
+		if d < 0 {
+			return fmt.Errorf("LECTERN_SCAN_INTERVAL must not be negative (got %q)", every)
+		}
+		c.ScanInterval = d
+	case at != "":
+		if isOffWord(at) {
+			return nil // no automatic scans
+		}
+		h, m, err := ParseClock(at)
+		if err != nil {
+			return fmt.Errorf("LECTERN_SCAN_AT: %w", err)
+		}
+		c.ScanDaily, c.ScanAtHour, c.ScanAtMinute = true, h, m
+	default:
+		c.ScanDaily, c.ScanAtHour, c.ScanAtMinute = true, 3, 0
+	}
+	return nil
+}
+
+// ParseClock reads a time of day written as 24-hour HH:MM ("03:00", "3:00",
+// "23:30").
+func ParseClock(s string) (hour, minute int, err error) {
+	bad := fmt.Errorf("invalid time of day %q (write it as HH:MM on a 24-hour clock, for example 03:00)", s)
+	h, m, ok := strings.Cut(strings.TrimSpace(s), ":")
+	if !ok || len(h) < 1 || len(h) > 2 || len(m) != 2 || !allDigits(h) || !allDigits(m) {
+		return 0, 0, bad
+	}
+	hour, _ = strconv.Atoi(h)
+	minute, _ = strconv.Atoi(m)
+	if hour > 23 || minute > 59 {
+		return 0, 0, bad
+	}
+	return hour, minute, nil
+}
+
+func allDigits(s string) bool {
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return s != ""
+}
+
+// isOffWord is true for the words that mean "switch this off".
+func isOffWord(s string) bool {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "0", "off", "disabled", "never", "false":
+		return true
+	}
+	return false
 }
 
 // ParseLibraries parses "label=/path;/other/path". The label is optional.
@@ -188,8 +258,7 @@ func envDuration(key string, def time.Duration) (time.Duration, error) {
 // 0 / off / disabled / never, which all mean zero.
 func ParseDuration(s string) (time.Duration, error) {
 	s = strings.ToLower(strings.TrimSpace(s))
-	switch s {
-	case "0", "off", "disabled", "never", "false":
+	if isOffWord(s) {
 		return 0, nil
 	}
 	if strings.HasSuffix(s, "d") {

@@ -1080,6 +1080,204 @@ with sync_playwright() as pw:
         page.wait_for_selector('h1:has-text("Go Basics")', timeout=8000)
         check('reload on a deep link stays signed in', True)
 
+    @step('a dropped course: pages, pictures, subtitles, captions and the scan schedule')
+    def _():
+        lib = os.environ.get('E2E_LIBRARY')
+        if not lib:
+            print('   (E2E_LIBRARY is not set: skipped)')
+            return
+        import subprocess
+        from urllib.parse import quote
+        from PIL import Image
+
+        # ---- a course somebody copies into the library ----
+        course = os.path.join(lib, 'Dropped Pages')
+        os.makedirs(os.path.join(course, 'images'), exist_ok=True)
+
+        def put(name, data, enc='utf-8'):
+            with open(os.path.join(course, name), 'wb') as f:
+                f.write(data if isinstance(data, bytes) else data.encode(enc))
+
+        put('01 - Page.html', """<!DOCTYPE html>
+<html><head><title>Hidden title</title><meta charset="utf-8">
+<style>body { background: #000; color: #000 }</style><script>window.__html_xss = 1</script></head>
+<body onload="window.__html_xss = 2">
+<h1>Page heading</h1>
+<p>Intro with <b>bold</b>, a <a href="https://example.com/page">web link</a> and a <a href="lesson2.html">relative link</a>.</p>
+<p><img src="images/My%20Pic.png" alt="local pic"> <img src="https://cdn.example.net/remote.png" alt="remote pic"></p>
+<table border="1"><tr><th colspan="2">Wide header</th></tr><tr><td>a</td><td>b</td></tr></table>
+<form action="https://evil.example"><input name="pw"><button>Send</button></form>
+<iframe src="https://example.com"></iframe>
+<p onclick="window.__html_xss = 3" style="position:fixed;inset:0">Styled</p>
+</body></html>
+""")
+        put('02 - Saved page.txt', '<html><body><h2>Café menu</h2><p>Price: 5€</p></body></html>', 'cp1252')
+        put('03 - Lesson notes.md', """# Lesson notes
+
+![diagram](images/My%20Pic.png) ![remote](https://cdn.example.net/x.png)
+
+- [x] done
+- [ ] to do
+
+<script>window.__md_xss = 1</script>
+""")
+        put('04 - Plain.txt', 'Use the <p> tag and <br> sometimes.\nSecond line.\n')
+        Image.new('RGB', (64, 48), (10, 120, 200)).save(os.path.join(course, 'images', 'My Pic.png'))
+        subprocess.run(['ffmpeg', '-y', '-loglevel', 'error',
+                        '-f', 'lavfi', '-i', 'testsrc=duration=6:size=160x120:rate=10',
+                        '-f', 'lavfi', '-i', 'sine=frequency=440:duration=6',
+                        '-c:v', 'libvpx', '-b:v', '100k', '-deadline', 'realtime', '-cpu-used', '8',
+                        '-c:a', 'libvorbis', '-shortest', os.path.join(course, '05 - Talk.webm')], check=True)
+        srt = lambda text: f'1\n00:00:01,000 --> 00:00:03,000\n{text}\n'
+        put('05 - Talk.English.srt', srt('Hello there'))
+        put('05 - Talk.pt-BR.srt', srt('Olá'))
+        put('05 - Talk.Spanish.srt', b'\xff\xfe' + srt('Hola señor').encode('utf-16-le'))   # UTF-16 with a byte-order mark
+        put('Bonus interview.srt', srt('Nobody can see this'))                            # belongs to no video
+
+        remote_hits = []
+        ctx.route('https://cdn.example.net/**', lambda r: (remote_hits.append(r.request.url), r.fulfill(status=200, content_type='image/gif', body=b'GIF89a')))
+        errors_before = len(console_errors)
+
+        # ---- the admin page: the schedule, then a scan ----
+        goto_hash(page, '#/admin')
+        page.wait_for_selector('h1:has-text("Administration")', timeout=5000)
+        scan = page.locator('section:has(h2:has-text("Library scan"))')
+        at = os.environ.get('E2E_SCAN_AT')
+        if at:
+            wait_until(lambda: f'every day at {at}' in scan.inner_text(), 6, desc='schedule line')
+            check('the admin page says when the automatic scan runs', True)
+            check('and when the next one is', 'Next scan:' in scan.inner_text(), scan.inner_text())
+        page.click('button:has-text("Scan now")')
+        wait_until(lambda: page.locator('details.unmatched').count() == 1, 20, desc='unmatched subtitles listed')
+        check('a subtitle without a video is counted', '1 subtitle file does not match a video' in scan.inner_text(), scan.inner_text())
+        page.locator('details.unmatched summary').click()
+        listed = scan.locator('details.unmatched').inner_text()
+        check('and named, so it can be fixed', 'Bonus interview.srt' in listed and 'Dropped Pages' in listed, listed)
+
+        courses = api(page, '/courses')['body']
+        dp = next((c for c in courses if c['title'] == 'Dropped Pages'), None)
+        check('the dropped course appears after the scan', dp is not None, [c['title'] for c in courses])
+        tree = api(page, f"/courses/{dp['id']}")['body']
+        items = {it['name']: it for sec in tree['sections'] for it in sec['items']}
+        check('subtitle files are not lessons', not any(n.endswith('.srt') for n in items), sorted(items))
+        talk = items['05 - Talk.webm']
+        langs = sorted(sub['lang'] for sub in talk['subtitles'])
+        check('three subtitle files are paired with the video, by language word or code', langs == ['en', 'es', 'pt-BR'], langs)
+        es = next(sub for sub in talk['subtitles'] if sub['lang'] == 'es')
+        r = page.request.get(BASE + f"/api/v1/subtitles/{es['id']}")
+        check('a UTF-16 subtitle file is converted to WebVTT', r.status == 200 and 'WEBVTT' in r.text() and 'Hola señor' in r.text(), r.text()[:160])
+
+        # ---- serving ----
+        pid = items['01 - Page.html']['id']
+        r = page.request.get(BASE + f'/api/v1/items/{pid}/stream')
+        check('an HTML file is served as plain text with a sandbox policy, never as a page', r.headers.get('content-type', '').startswith('text/plain') and 'sandbox' in r.headers.get('content-security-policy', ''), r.headers)
+        asset = lambda ref, req=page.request: req.get(BASE + f'/api/v1/items/{pid}/asset?path=' + quote(ref))
+        r = asset('images/My Pic.png')
+        check('a picture beside a page is served', r.status == 200 and r.headers.get('content-type', '').startswith('image/'), (r.status, r.headers.get('content-type')))
+        check('only pictures are served this way', asset('01 - Page.html').status == 404)
+        check('nothing outside the course is reachable', asset('../../etc/passwd').status == 404 and asset('../Go Basics/cover.jpg').status == 404)
+        anon = pw.request.new_context()
+        check('the picture endpoint needs a sign-in', asset('images/My Pic.png', anon).status == 401)
+        anon.dispose()
+
+        # ---- the viewer ----
+        def open_item(name):
+            goto_hash(page, f"#/course/{dp['id']}/item/{items[name]['id']}")
+
+        open_item('01 - Page.html')
+        page.wait_for_selector('article.prose h1', timeout=8000)
+        art = page.locator('article.prose')
+        check('an HTML page is shown as a page', art.locator('h1').inner_text() == 'Page heading' and art.locator('b').count() == 1)
+        check('its title, styles and scripts do not show up', 'Hidden title' not in art.inner_text() and art.locator('script, style, link, meta, title').count() == 0, art.inner_text())
+        check('no script of the page ran', page.evaluate('() => window.__html_xss === undefined'))
+        check('forms, frames, handlers and styles are gone', art.locator('form, input, button, iframe, [onclick], [onload], [style]').count() == 0)
+        links = art.locator('a[href]')
+        check('only the link to a web site is kept, opened safely',
+              links.count() == 1 and links.first.get_attribute('href') == 'https://example.com/page' and links.first.get_attribute('target') == '_blank' and 'noopener' in (links.first.get_attribute('rel') or ''),
+              links.evaluate_all('a => a.map(x => x.outerHTML)'))
+        check('the words of a dropped link stay', 'relative link' in art.inner_text())
+        page.wait_for_function('() => { const i = document.querySelector("article.prose img[alt=\\"local pic\\"]"); return i && i.complete && i.naturalWidth === 64 }', timeout=8000)
+        check('a picture stored beside the page is shown', True)
+        check('a picture on another site is not loaded', art.locator('img[src*="cdn.example.net"]').count() == 0 and remote_hits == [], remote_hits)
+        check('the page says so', '1 image from other websites is not loaded' in page.locator('main').inner_text(), page.locator('main').inner_text()[:300])
+        check('a table keeps its column span', art.locator('th[colspan="2"]').count() == 1)
+        wait_until(lambda: progress(page, items['01 - Page.html']['id']) and progress(page, items['01 - Page.html']['id'])['state'] == 'done', 5, desc='page done on open')
+
+        seg = page.locator('.seg')
+        check('a Formatted / Source switch is offered', seg.locator('button').all_inner_texts() == ['Formatted', 'Source'], seg.all_inner_texts())
+        check('Formatted is selected first', seg.locator('button').first.get_attribute('aria-pressed') == 'true')
+        seg.locator('button', has_text='Source').click()
+        page.wait_for_selector('main pre', timeout=3000)
+        src = page.locator('main pre').inner_text()
+        check('Source shows the page as it was written', '<h1>Page heading</h1>' in src and 'window.__html_xss = 1' in src, src[:200])
+        check('and the formatted page is out of the way', page.locator('article.prose').count() == 0)
+        seg.locator('button', has_text='Formatted').click()
+        page.wait_for_selector('article.prose h1', timeout=3000)
+        check('Formatted brings the page back', True)
+        check('the images note goes with the formatted view', '1 image from other websites' in page.locator('main').inner_text())
+
+        open_item('02 - Saved page.txt')
+        page.wait_for_selector('article.prose h2', timeout=8000)
+        txt = page.locator('article.prose').inner_text()
+        check('a .txt saved from a web page is shown as a page', 'Café menu' in txt, txt)
+        check('an old Windows-1252 file is read in its own encoding', '5€' in txt and '�' not in txt, txt)
+
+        open_item('03 - Lesson notes.md')
+        page.wait_for_selector('article.prose h1', timeout=8000)
+        page.wait_for_function('() => { const i = document.querySelector("article.prose img[alt=\\"diagram\\"]"); return i && i.complete && i.naturalWidth === 64 }', timeout=8000)
+        check('a Markdown picture stored beside the file is shown', True)
+        md = page.locator('article.prose')
+        check('a Markdown picture on another site is not loaded', md.locator('img[src*="cdn.example.net"]').count() == 0 and remote_hits == [], remote_hits)
+        check('Markdown scripts still do not run', page.evaluate('() => window.__md_xss === undefined') and md.locator('script').count() == 0)
+        check('task lists show ticks', '☑ done' in md.inner_text() and '☐ to do' in md.inner_text(), md.inner_text())
+
+        open_item('04 - Plain.txt')
+        page.wait_for_selector('main pre', timeout=8000)
+        check('plain text that only mentions tags stays plain, with no switch', page.locator('.seg').count() == 0 and page.locator('article.prose').count() == 0 and '<p> tag' in page.locator('main pre').inner_text())
+
+        # ---- captions ----
+        def tracks():
+            return page.evaluate('() => Array.from(document.querySelector("video").textTracks).map(t => t.language + ":" + t.mode)')
+        def saved():
+            return json.loads(page.evaluate('() => localStorage.getItem("lectern-captions") || "null"'))
+        def hud():
+            return page.locator('.hud').inner_text() if page.locator('.hud').count() else ''
+        def open_video(course_id, item):
+            goto_hash(page, f'#/course/{course_id}/item/{item}')
+            page.wait_for_function('() => { const v = document.querySelector("video"); return v && v.readyState >= 1 }', timeout=15000)
+            page.evaluate('() => { if (document.activeElement) document.activeElement.blur() }')
+
+        page.evaluate('() => localStorage.removeItem("lectern-captions")')
+        open_video(dp['id'], talk['id'])
+        wait_until(lambda: len(tracks()) == 3, 5, desc='three tracks')
+        check('captions are off when nothing was chosen yet', all(t.endswith(':disabled') for t in tracks()), tracks())
+        page.keyboard.press('c')
+        wait_until(lambda: sum(t.endswith(':showing') for t in tracks()) == 1, 4, desc='C turns captions on')
+        check('C turns captions on, and the pill names the track', hud() != '' and 'off' not in hud().lower(), hud())
+        wait_until(lambda: (saved() or {}).get('on') is True, 3, desc='choice saved')
+        check('the choice is remembered on this device', True, saved())
+        page.keyboard.press('C')
+        wait_until(lambda: all(t.endswith(':disabled') for t in tracks()), 4, desc='C turns captions off')
+        check('a second press (Shift is fine) turns them off', 'off' in hud().lower(), hud())
+        wait_until(lambda: (saved() or {}).get('on') is False, 3, desc='off saved')
+        check('and that is remembered as well', True)
+        # the browser's own captions menu is the same as a pick of the person
+        page.evaluate('() => { const t = Array.from(document.querySelector("video").textTracks).find(t => t.language === "en"); t.mode = "showing" }')
+        wait_until(lambda: saved() == {'on': True, 'lang': 'en'}, 4, desc='menu pick saved')
+        check('a pick in the player menu is remembered with its language', True, saved())
+        open_video(gb(), ids['01 - Welcome.webm'])
+        wait_until(lambda: 'en:showing' in tracks(), 5, desc='English is already on in the next lesson')
+        check('the next lesson starts with English captions on', True, tracks())
+        page.keyboard.press('c')
+        wait_until(lambda: all(t.endswith(':disabled') for t in tracks()), 4, desc='off here')
+        open_video(dp['id'], talk['id'])
+        wait_until(lambda: len(tracks()) == 3, 5, desc='three tracks again')
+        time.sleep(0.4)
+        check('captions switched off stay off in the next lesson', all(t.endswith(':disabled') for t in tracks()), tracks())
+
+        csp = [e for e in console_errors[errors_before:] if 'Content Security Policy' in e or 'Refused to' in e]
+        check('the browser blocked nothing along the way', not csp, csp)
+
     browser.close()
 
 ok = sum(1 for r in results if r[0])

@@ -75,6 +75,33 @@ func TestSubtitleLang(t *testing.T) {
 		{"lesson", "lessons", "", false},
 		{"lesson 1", "lesson 10.en", "", false},
 		{"lesson", "other", "", false},
+
+		// notes in the name, in any order, with brackets
+		{"lesson", "lesson.captions", "", true},
+		{"lesson", "lesson - Subtitles", "", true},
+		{"lesson", "lesson.en.SDH", "en", true},
+		{"lesson", "lesson.forced.en", "en", true},
+		{"lesson", "lesson (English)", "en", true},
+		{"lesson", "lesson [CC]", "", true},
+		{"lesson", "lesson[fr]", "fr", true},
+		{"lesson", "lesson.English.CC", "en", true},
+		{"lesson", "lesson-en-forced", "en", true},
+		{"lesson", "lesson_pt-BR_forced", "pt-BR", true},
+		{"lesson", "lesson.pt-BR-forced", "pt-BR", true},
+		{"lesson", "lesson.English-US", "en-US", true},
+		{"lesson", "lesson.es-419", "es-419", true},
+		{"lesson", "lesson.en-orig", "en-orig", true},
+		{"lesson", "LESSON.EN", "en", true},
+		// the video's own extension kept in the subtitle's name
+		{"lesson.mp4", "lesson.mp4", "", true},
+		{"lesson.mp4", "lesson.mp4.en", "en", true},
+		// still not subtitles of it
+		{"lesson", "lesson 2 en", "", false},
+		{"lesson", "lesson-final", "", false},
+		{"lesson", "lesson.en.fr", "", false}, // two languages
+		{"Intro", "Intro to Go", "", false},   // a different title that starts the same way
+		{"lesson", "lesson (2)", "", false},
+		{"lesson", "lesson,en", "", false},
 	} {
 		lang, ok := SubtitleLang(tc.media, tc.sub)
 		if lang != tc.lang || ok != tc.ok {
@@ -83,6 +110,32 @@ func TestSubtitleLang(t *testing.T) {
 	}
 	if LangLabel("pt-BR") != "Portuguese (BR)" || LangLabel("en") != "English" || LangLabel("") != "Subtitles" || LangLabel("xx") != "XX" {
 		t.Error("LangLabel output unexpected")
+	}
+}
+
+func TestGenericSubtitleLang(t *testing.T) {
+	for _, tc := range []struct {
+		stem string
+		lang string
+		ok   bool
+	}{
+		{"english", "en", true},
+		{"en", "en", true},
+		{"captions", "", true},
+		{"subtitles.en", "en", true},
+		{"Subtitles - French", "fr", true},
+		{"captions_pt-BR", "pt-BR", true},
+		{"", "", false},
+		{"  ", "", false},
+		{"02 - Next", "", false},
+		{"notes about it", "", false},
+		{"lesson 2", "", false},
+		{"Intro", "", false},
+	} {
+		lang, ok := GenericSubtitleLang(tc.stem)
+		if lang != tc.lang || ok != tc.ok {
+			t.Errorf("GenericSubtitleLang(%q) = %q,%v want %q,%v", tc.stem, lang, ok, tc.lang, tc.ok)
+		}
 	}
 }
 

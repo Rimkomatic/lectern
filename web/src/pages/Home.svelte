@@ -222,7 +222,7 @@
     {:else}
       <p class="empty-title">No courses yet</p>
       <p class="muted">
-        Put course folders in the library folder on the server; the server rescans on a timer, or an administrator can start a scan.
+        Put course folders in the library folder on the server; the server scans it every night, or an administrator can start a scan at once.
       </p>
     {/if}
   </div>

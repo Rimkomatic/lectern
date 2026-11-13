@@ -67,6 +67,10 @@ type ScannedCourse struct {
 	Sections    []ScannedSection
 	Err         error // set when the folder could not be read completely
 
+	// Strays are subtitle files that sit among videos but match none of them
+	// by name (relative to the course folder). They are not lessons.
+	Strays []string
+
 	// IsFile marks a course that is a single video or audio file in the library
 	// root. Its one item has the empty path (the course "folder" is the file
 	// itself), and what belongs to it (subtitles, picture) is reached as
@@ -146,7 +150,8 @@ func Walk(ctx context.Context, root string, opt WalkOptions) ([]ScannedCourse, e
 // a timestamp file, a picture) belong to it; any other loose file is ignored.
 func fileCourses(files []ent) []ScannedCourse {
 	var out []ScannedCourse
-	for _, it := range buildItems("", files, "") {
+	items, _ := buildItems("", files, "")
+	for _, it := range items {
 		if !IsMedia(it.Kind) {
 			continue
 		}
@@ -277,7 +282,9 @@ func (w *walker) course(e ent) ScannedCourse {
 		}
 	}
 
-	if items := buildItems("", rootFiles, ""); len(items) > 0 {
+	items, strays := buildItems("", rootFiles, "")
+	c.Strays = append(c.Strays, strays...)
+	if len(items) > 0 {
 		c.Sections = append(c.Sections, ScannedSection{RelPath: "", Title: RootSectionTitle, Items: items})
 	}
 
@@ -287,11 +294,12 @@ func (w *walker) course(e ent) ScannedCourse {
 			c.Err = err
 			return c
 		}
-		items, err := w.collect(d, d.name, "", 1)
+		items, strays, err := w.collect(d, d.name, "", 1)
 		if err != nil {
 			c.Err = fmt.Errorf("section %q: %w", d.name, err)
 			return c
 		}
+		c.Strays = append(c.Strays, strays...)
 		if len(items) == 0 {
 			continue
 		}
@@ -304,16 +312,16 @@ func (w *walker) course(e ent) ScannedCourse {
 
 // collect gathers the items of a section folder and everything below it.
 // Files directly inside come first, then each sub-folder in natural order.
-func (w *walker) collect(dir ent, rel, titlePrefix string, depth int) ([]ScannedItem, error) {
+func (w *walker) collect(dir ent, rel, titlePrefix string, depth int) (items []ScannedItem, strays []string, err error) {
 	if w.stack[dir.real] {
-		return nil, nil // symlink loop: ignore the repeat
+		return nil, nil, nil // symlink loop: ignore the repeat
 	}
 	w.stack[dir.real] = true
 	defer delete(w.stack, dir.real)
 
 	ents, err := w.readDir(dir.abs)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var files, dirs []ent
 	for _, x := range ents {
@@ -323,28 +331,35 @@ func (w *walker) collect(dir ent, rel, titlePrefix string, depth int) ([]Scanned
 			files = append(files, x)
 		}
 	}
-	items := buildItems(rel, files, titlePrefix)
+	items, strays = buildItems(rel, files, titlePrefix)
 	if depth >= maxDepth {
-		return items, nil
+		return items, strays, nil
 	}
 	for _, d := range dirs {
 		if err := w.ctx.Err(); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		sub, err := w.collect(d, rel+"/"+d.name, titlePrefix+CleanTitle(d.name)+" / ", depth+1)
+		sub, subStrays, err := w.collect(d, rel+"/"+d.name, titlePrefix+CleanTitle(d.name)+" / ", depth+1)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		items = append(items, sub...)
+		strays = append(strays, subStrays...)
 	}
-	return items, nil
+	return items, strays, nil
 }
 
 // buildItems turns the files of one folder into items. Subtitle files and
 // timestamp files ("Talk.chapters.txt") that belong to a video or audio file
 // are attached to it instead of being listed.
-func buildItems(dirRel string, files []ent, titlePrefix string) []ScannedItem {
-	var items []ScannedItem
+//
+// A subtitle file is matched to a video by name (see SubtitleLang). One that
+// matches none is a stray: with several videos in the folder it is left out
+// and returned (as a path relative to the course folder) so the admin can fix
+// its name; with a single video it is attached to it if its name says nothing
+// but "english" or "subtitles"; with no video at all in the folder it is just a
+// text file, as before.
+func buildItems(dirRel string, files []ent, titlePrefix string) (items []ScannedItem, strays []string) {
 	var subs, stamps []ent
 	mk := func(f ent) ScannedItem {
 		ext := extOf(f.name)
@@ -380,6 +395,15 @@ func buildItems(dirRel string, files []ent, titlePrefix string) []ScannedItem {
 		}
 		items = append(items, mk(f))
 	}
+	attach := func(i int, s ent, lang string) {
+		items[i].Subtitles = append(items[i].Subtitles, ScannedSubtitle{
+			RelPath: path.Join(dirRel, s.name),
+			Lang:    lang,
+			Label:   LangLabel(lang),
+			Format:  extOf(s.name),
+		})
+	}
+	var loose []ent // subtitle files no video claims by name
 	for _, s := range subs {
 		sStem := stemOf(s.name)
 		best, bestLen, bestLang := -1, -1, ""
@@ -387,21 +411,39 @@ func buildItems(dirRel string, files []ent, titlePrefix string) []ScannedItem {
 			if !IsMedia(items[i].Kind) {
 				continue
 			}
-			mStem := stemOf(items[i].Name)
-			if lang, ok := SubtitleLang(mStem, sStem); ok && len(mStem) > bestLen {
-				best, bestLen, bestLang = i, len(mStem), lang
+			// The video's name without its extension ("lesson") and with it
+			// ("lesson.mp4", as in "lesson.mp4.en.srt"); the longer match wins.
+			for _, base := range [...]string{stemOf(items[i].Name), items[i].Name} {
+				if lang, ok := SubtitleLang(base, sStem); ok && len(base) > bestLen {
+					best, bestLen, bestLang = i, len(base), lang
+				}
 			}
 		}
 		if best < 0 {
-			items = append(items, mk(s)) // not a subtitle of anything here: plain text file
+			loose = append(loose, s)
 			continue
 		}
-		items[best].Subtitles = append(items[best].Subtitles, ScannedSubtitle{
-			RelPath: path.Join(dirRel, s.name),
-			Lang:    bestLang,
-			Label:   LangLabel(bestLang),
-			Format:  extOf(s.name),
-		})
+		attach(best, s, bestLang)
+	}
+	var media []int
+	for i := range items {
+		if IsMedia(items[i].Kind) {
+			media = append(media, i)
+		}
+	}
+	for _, s := range loose {
+		switch {
+		case len(media) == 0:
+			items = append(items, mk(s)) // nothing to attach to here: a plain text file
+		case len(media) == 1:
+			if lang, ok := GenericSubtitleLang(stemOf(s.name)); ok {
+				attach(media[0], s, lang) // "english.srt" beside the one video
+				continue
+			}
+			fallthrough
+		default:
+			strays = append(strays, path.Join(dirRel, s.name))
+		}
 	}
 	for _, f := range stamps {
 		stem, _ := ChapterStem(f.name)
@@ -423,7 +465,7 @@ func buildItems(dirRel string, files []ent, titlePrefix string) []ScannedItem {
 		}
 	}
 	sort.SliceStable(items, func(i, j int) bool { return NaturalCompare(items[i].Name, items[j].Name) < 0 })
-	return items
+	return items, strays
 }
 
 // ---- course.json ----

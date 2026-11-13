@@ -95,8 +95,11 @@ func TestWalkLayout(t *testing.T) {
 	for _, it := range adv.Items {
 		advTitles = append(advTitles, it.Title)
 	}
-	if strings.Join(advTitles, "|") != "Generics|Concurrency|Reflection|lonely" {
-		t.Errorf("Advanced items (natural order, orphan subtitle kept as text) = %v", advTitles)
+	if strings.Join(advTitles, "|") != "Generics|Concurrency|Reflection" {
+		t.Errorf("Advanced items (natural order; a subtitle that fits none of the videos is not a lesson) = %v", advTitles)
+	}
+	if strings.Join(g.Strays, "|") != "Advanced/lonely.srt" {
+		t.Errorf("unmatched subtitle files = %v", g.Strays)
 	}
 
 	intro := g.Sections[2]
@@ -182,4 +185,120 @@ func TestWalkMissingRoot(t *testing.T) {
 	if _, err := Walk(context.Background(), f, WalkOptions{}); err == nil {
 		t.Error("a file is not a library")
 	}
+}
+
+// subtitleFolder walks a library holding one course with the given files in a
+// single section folder and returns the course.
+func subtitleFolder(t *testing.T, files ...string) ScannedCourse {
+	t.Helper()
+	root := t.TempDir()
+	for _, f := range files {
+		write(t, root, "C/S/"+f, "x")
+	}
+	courses, err := Walk(context.Background(), root, WalkOptions{})
+	if err != nil || len(courses) != 1 || courses[0].Err != nil {
+		t.Fatalf("walk: %v %+v", err, courses)
+	}
+	return courses[0]
+}
+
+// subsOf lists "lesson title: lang,lang" for every item that has subtitles, and
+// the titles of the items that are text files.
+func subsOf(c ScannedCourse) (subs map[string]string, texts []string) {
+	subs = map[string]string{}
+	for _, sec := range c.Sections {
+		for _, it := range sec.Items {
+			if it.Kind == "text" {
+				texts = append(texts, it.Title)
+			}
+			var langs []string
+			for _, s := range it.Subtitles {
+				langs = append(langs, s.Lang+"/"+s.Format)
+			}
+			if len(langs) > 0 {
+				subs[it.Title] = strings.Join(langs, ",")
+			}
+		}
+	}
+	return subs, texts
+}
+
+func TestSubtitlePairing(t *testing.T) {
+	t.Run("looser names", func(t *testing.T) {
+		c := subtitleFolder(t,
+			"01 - Intro.mp4", "01 - Intro.mp4.en.srt", // the video's extension kept in the name
+			"02 - Loops.mp4", "02 - Loops (English) [CC].srt", "02 - Loops.fr.forced.vtt",
+			"03 - Maps.mp4", "03 - Maps - Subtitles.srt", "03 - Maps.pt_BR.srt",
+			"04 - Errors.mp4", "04 - Errors.mp4.srt",
+		)
+		subs, texts := subsOf(c)
+		want := map[string]string{
+			"Intro":  "en/srt",
+			"Loops":  "en/srt,fr/vtt",
+			"Maps":   "/srt,pt-BR/srt",
+			"Errors": "/srt",
+		}
+		if len(subs) != len(want) {
+			t.Fatalf("subtitles = %v", subs)
+		}
+		for k, v := range want {
+			// attachment order follows the file names; compare as sets
+			got := strings.Split(subs[k], ",")
+			for _, w := range strings.Split(v, ",") {
+				found := false
+				for _, g := range got {
+					found = found || g == w
+				}
+				if !found {
+					t.Errorf("%s: want %q among %q", k, w, subs[k])
+				}
+			}
+		}
+		if len(texts) != 0 || len(c.Strays) != 0 {
+			t.Errorf("nothing should be left over: texts=%v strays=%v", texts, c.Strays)
+		}
+	})
+
+	t.Run("one video takes generic subtitle names", func(t *testing.T) {
+		c := subtitleFolder(t, "lecture.mp4", "captions.srt", "subtitles.fr.vtt", "english.srt", "Notes on it.srt")
+		subs, texts := subsOf(c)
+		if got := subs["lecture"]; !strings.Contains(got, "/srt") || !strings.Contains(got, "fr/vtt") || !strings.Contains(got, "en/srt") {
+			t.Errorf("lecture subtitles = %q", got)
+		}
+		// "Notes on it" names something else: left out, not guessed
+		if strings.Join(c.Strays, "|") != "S/Notes on it.srt" || len(texts) != 0 {
+			t.Errorf("strays=%v texts=%v", c.Strays, texts)
+		}
+	})
+
+	t.Run("several videos: an unmatched subtitle is a stray, not a lesson", func(t *testing.T) {
+		c := subtitleFolder(t, "01 - A.mp4", "02 - B.mp4", "01 - A.en.srt", "english.srt", "random.vtt")
+		subs, texts := subsOf(c)
+		if subs["A"] != "en/srt" || len(subs) != 1 {
+			t.Errorf("subtitles = %v", subs)
+		}
+		if strings.Join(c.Strays, "|") != "S/english.srt|S/random.vtt" {
+			t.Errorf("strays = %v", c.Strays)
+		}
+		if len(texts) != 0 || c.ItemCount() != 2 {
+			t.Errorf("texts=%v items=%d: the strays must not be lessons", texts, c.ItemCount())
+		}
+	})
+
+	t.Run("a folder with no video keeps its subtitle files as text", func(t *testing.T) {
+		c := subtitleFolder(t, "talk-a.srt", "talk-b.vtt", "notes.pdf")
+		_, texts := subsOf(c)
+		if strings.Join(texts, "|") != "talk-a|talk-b" || len(c.Strays) != 0 {
+			t.Errorf("texts=%v strays=%v", texts, c.Strays)
+		}
+	})
+
+	t.Run("the longest matching video name wins", func(t *testing.T) {
+		// Talk.en.srt fits Talk.mp4 (English) and Talk.en.mp4 (exactly): the exact one is meant
+		c := subtitleFolder(t, "Talk.mp4", "Talk.en.mp4", "Talk.en.srt")
+		subs, _ := subsOf(c)
+		if _, onShort := subs["Talk"]; onShort || subs["Talk.en"] != "/srt" {
+			t.Errorf("subtitles = %v", subs)
+		}
+	})
 }

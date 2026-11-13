@@ -30,16 +30,31 @@ const target = (tag: string, extra: Partial<TargetFacts> = {}): TargetFacts => (
 const body = target('body');
 
 describe('actionFor', () => {
-  it('maps Space and the four arrows', () => {
+  it('maps Space, the four arrows and C', () => {
     expect(actionFor(key(' '), body, true)).toEqual({ kind: 'toggle' });
     expect(actionFor(key('ArrowLeft'), body, true)).toEqual({ kind: 'skip', seconds: -SKIP_SECONDS });
     expect(actionFor(key('ArrowRight'), body, true)).toEqual({ kind: 'skip', seconds: SKIP_SECONDS });
     expect(actionFor(key('ArrowUp'), body, true)).toEqual({ kind: 'volume', delta: VOLUME_STEP });
     expect(actionFor(key('ArrowDown'), body, true)).toEqual({ kind: 'volume', delta: -VOLUME_STEP });
+    expect(actionFor(key('c'), body, true)).toEqual({ kind: 'captions' });
+    expect(actionFor(key('C'), body, true)).toEqual({ kind: 'captions' }); // Caps Lock on
+  });
+
+  it('leaves Ctrl+C (copy) and Shift+C alone', () => {
+    for (const mod of ['ctrlKey', 'metaKey', 'altKey', 'shiftKey'] as const) {
+      expect(actionFor(key('c', { [mod]: true }), body, true), mod).toBeNull();
+    }
+  });
+
+  it('C works after a click on a button, and on a button you tabbed to (it has no use for letters)', () => {
+    for (const t of [target('button'), target('summary'), target('div', { role: 'button' })]) {
+      expect(actionFor(key('c'), t, true), t.tag).toEqual({ kind: 'captions' });
+      expect(actionFor(key('c'), t, false), t.tag).toEqual({ kind: 'captions' });
+    }
   });
 
   it('ignores every other key', () => {
-    for (const k of ['Enter', 'a', 'm', 'f', 'k', 'Tab', 'Escape', 'PageDown', 'Home']) {
+    for (const k of ['Enter', 'a', 'm', 'f', 'k', 'v', 'Tab', 'Escape', 'PageDown', 'Home']) {
       expect(actionFor(key(k), body, true)).toBeNull();
     }
   });
@@ -54,14 +69,14 @@ describe('actionFor', () => {
 
   it('works from anywhere on the page: body, video, links, panels', () => {
     for (const t of [body, target(''), target('video'), target('audio'), target('a'), target('aside'), target('main'), target('div')]) {
-      for (const k of [' ', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']) {
+      for (const k of [' ', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'c']) {
         expect(actionFor(key(k), t, true), `${t.tag} ${k}`).not.toBeNull();
         expect(actionFor(key(k), t, false), `${t.tag} ${k} (pointer)`).not.toBeNull();
       }
     }
   });
 
-  it('keeps all five keys out of text fields and selects', () => {
+  it('keeps all six keys out of text fields and selects', () => {
     const fields = [
       target('input', { type: 'text' }),
       target('input'),
@@ -71,7 +86,7 @@ describe('actionFor', () => {
       target('div', { editable: true }),
     ];
     for (const t of fields) {
-      for (const k of [' ', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']) {
+      for (const k of [' ', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'c']) {
         expect(actionFor(key(k), t, true), `${t.tag}/${t.type} ${k}`).toBeNull();
         expect(actionFor(key(k), t, false)).toBeNull();
       }

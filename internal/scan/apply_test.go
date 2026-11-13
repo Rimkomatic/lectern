@@ -247,7 +247,7 @@ func TestFingerprintFillAndMoveWithoutDBFingerprint(t *testing.T) {
 	if err != nil || len(targets) == 0 {
 		t.Fatalf("expected items awaiting a fingerprint: %v %v", targets, err)
 	}
-	r := NewRunner(app, 0, 0, nil)
+	r := NewRunner(app, Schedule{}, 0, nil)
 	r.fillFingerprints(ctx)
 	if left, _ := st.FingerprintTargets(ctx, 100); len(left) != 0 {
 		t.Fatalf("%d items still without fingerprint", len(left))
@@ -258,5 +258,49 @@ func TestFingerprintFillAndMoveWithoutDBFingerprint(t *testing.T) {
 	c, err := app.ScanLibrary(ctx, libs[0], nil)
 	if err != nil || c.ItemsMoved != 1 || c.ItemsAdded != 0 {
 		t.Fatalf("fingerprint move: %+v %v", c, err)
+	}
+}
+
+// A subtitle file that fits none of the videos around it is not a lesson; the
+// scan counts it and names it so an admin can fix its name.
+func TestScanReportsUnmatchedSubtitles(t *testing.T) {
+	conn, _ := testdb.Open(t)
+	ctx := context.Background()
+	st := store.New(conn)
+	root := t.TempDir()
+	write(t, root, "C/S/01 - A.mp4", uniq("a"))
+	write(t, root, "C/S/02 - B.mp4", uniq("b"))
+	write(t, root, "C/S/01 - A.en.srt", "x")
+	write(t, root, "C/S/random.srt", "x")
+	write(t, root, "C/Transcripts/only.vtt", "x") // no video in that folder: stays a text lesson
+	if err := st.SyncLibraries(ctx, []store.LibrarySpec{{Label: "Main", Path: root}}); err != nil {
+		t.Fatal(err)
+	}
+	libs, err := st.ListLibraries(ctx, true)
+	if err != nil || len(libs) != 1 {
+		t.Fatalf("libraries: %v %v", libs, err)
+	}
+	app := &Applier{Store: st}
+	c, err := app.ScanLibrary(ctx, libs[0], nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.SubsUnpaired != 1 || strings.Join(c.UnpairedSubs, "|") != "C/S/random.srt" {
+		t.Errorf("unmatched subtitles = %d %v", c.SubsUnpaired, c.UnpairedSubs)
+	}
+	if c.Items != 3 {
+		t.Errorf("items = %d, want 3 (two videos and the transcript; the unmatched subtitle is none)", c.Items)
+	}
+	// a second scan reports the same, and Add keeps the list within its cap
+	c2, err := app.ScanLibrary(ctx, libs[0], nil)
+	if err != nil || c2.SubsUnpaired != 1 {
+		t.Errorf("rescan: %v %+v", err, c2)
+	}
+	var sum Counts
+	for i := 0; i < MaxUnpairedListed+5; i++ {
+		sum.Add(c)
+	}
+	if sum.SubsUnpaired != MaxUnpairedListed+5 || len(sum.UnpairedSubs) != MaxUnpairedListed {
+		t.Errorf("Add: count %d, listed %d", sum.SubsUnpaired, len(sum.UnpairedSubs))
 	}
 }

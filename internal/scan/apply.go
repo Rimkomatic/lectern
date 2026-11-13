@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"path"
 	"sort"
 	"time"
 
@@ -24,7 +25,16 @@ type Counts struct {
 	ItemsUpdated   int `json:"items_updated"`
 	ItemsMoved     int `json:"items_moved"`
 	ItemsMissing   int `json:"items_missing"`
+
+	// Subtitle files that sit among videos but match none of them by name.
+	// They are not lessons; the admin page lists them so they can be renamed.
+	SubsUnpaired int      `json:"subs_unpaired"`
+	UnpairedSubs []string `json:"unpaired_subs,omitempty"` // "course/section/file.srt", the first MaxUnpairedListed
 }
+
+// MaxUnpairedListed caps the list of unmatched subtitle files kept for the
+// admin page; SubsUnpaired still counts all of them.
+const MaxUnpairedListed = 100
 
 func (c *Counts) Add(o Counts) {
 	c.Courses += o.Courses
@@ -37,6 +47,13 @@ func (c *Counts) Add(o Counts) {
 	c.ItemsUpdated += o.ItemsUpdated
 	c.ItemsMoved += o.ItemsMoved
 	c.ItemsMissing += o.ItemsMissing
+	c.SubsUnpaired += o.SubsUnpaired
+	for _, p := range o.UnpairedSubs {
+		if len(c.UnpairedSubs) >= MaxUnpairedListed {
+			break
+		}
+		c.UnpairedSubs = append(c.UnpairedSubs, p)
+	}
 }
 
 // Applier compares a folder walk with the database and writes the difference.
@@ -166,6 +183,12 @@ func (a *Applier) ScanLibrary(ctx context.Context, lib store.Library, report fun
 		seen[id] = true
 		cnt.Courses++
 		cnt.Items += sc.ItemCount()
+		for _, p := range sc.Strays {
+			cnt.SubsUnpaired++
+			if len(cnt.UnpairedSubs) < MaxUnpairedListed {
+				cnt.UnpairedSubs = append(cnt.UnpairedSubs, path.Join(sc.RelPath, p))
+			}
+		}
 		if st.CourseNew && !renamed[i] {
 			cnt.CoursesNew++
 		}

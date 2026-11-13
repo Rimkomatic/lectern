@@ -3,6 +3,7 @@
   import { api, messageOf, url } from '../lib/api';
   import { setTitle } from '../lib/brand';
   import { formatWhen } from '../lib/format';
+  import { scheduleText } from '../lib/schedule';
   import { session } from '../lib/session.svelte';
   import type { Library, ScanStatus, User } from '../lib/types';
   import Icon from '../components/Icon.svelte';
@@ -13,6 +14,10 @@
   let users = $state<User[]>([]);
   let error = $state('');
   let notice = $state('');
+
+  const scheduleLine = $derived(scheduleText(status?.schedule));
+  const unmatched = $derived(status?.last?.unpaired_subs ?? []);
+  const unmatchedCount = $derived(status?.last?.subs_unpaired ?? 0);
 
   let newUsername = $state('');
   let newDisplayName = $state('');
@@ -162,6 +167,28 @@
         </p>
       {:else}
         <p class="muted">No scan has run since the server started.</p>
+      {/if}
+      {#if scheduleLine}
+        <p class="muted schedule">
+          <small>{scheduleLine}{#if status?.next_at && !status.running} Next scan: {formatWhen(status.next_at)}.{/if}</small>
+        </p>
+      {/if}
+      {#if unmatchedCount > 0}
+        <details class="unmatched">
+          <summary>{unmatchedCount} subtitle {unmatchedCount === 1 ? 'file does' : 'files do'} not match a video</summary>
+          <p>
+            Name a subtitle file after its video and they pair up at the next scan:
+            <code>Lesson 1.mp4</code> and <code>Lesson 1.en.srt</code>. Until then these are not shown.
+          </p>
+          <ul aria-label="Unmatched subtitle files">
+            {#each unmatched as p (p)}
+              <li><code>{p}</code></li>
+            {/each}
+          </ul>
+          {#if unmatchedCount > unmatched.length}
+            <p><small>…and {unmatchedCount - unmatched.length} more.</small></p>
+          {/if}
+        </details>
       {/if}
       {#if status?.errors && status.errors.length > 0}
         <ul class="problems" aria-label="Scan problems">
@@ -359,6 +386,31 @@
   }
   .bar {
     margin-top: 12px;
+  }
+  .schedule {
+    margin: 8px 0 0;
+  }
+  .unmatched {
+    margin: 14px 0 0;
+    padding: 10px 16px;
+    border-radius: var(--r-md);
+    background: var(--surface-2);
+    font-size: 0.875rem;
+  }
+  .unmatched summary {
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .unmatched p {
+    margin: 8px 0 0;
+  }
+  .unmatched ul {
+    margin: 8px 0 0;
+    padding-left: 18px;
+  }
+  .unmatched li {
+    margin: 3px 0;
+    overflow-wrap: anywhere;
   }
   .problems {
     margin: 14px 0 0;

@@ -1,10 +1,12 @@
 package api
 
 import (
+	"encoding/binary"
 	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode/utf16"
 	"unicode/utf8"
 )
 
@@ -14,10 +16,20 @@ var cp1252High = [32]rune{
 	0, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2013, 0x2014, 0x02DC, 0x2122, 0x0161, 0x203A, 0x0153, 0, 0x017E, 0x0178,
 }
 
-// decodeText returns UTF-8 text from subtitle bytes: it strips a byte-order
-// mark and, if the file is not valid UTF-8, reads it as Windows-1252 (the
-// usual encoding of old subtitle files).
+// decodeText returns UTF-8 text from subtitle bytes. It understands UTF-8 (with
+// or without a byte-order mark) and UTF-16 (little or big endian; with a mark,
+// or without one when the text is clearly 16-bit). Anything else is read as
+// Windows-1252, the usual encoding of old subtitle files.
 func decodeText(b []byte) string {
+	switch {
+	case len(b) >= 2 && b[0] == 0xFF && b[1] == 0xFE:
+		return decodeUTF16(b[2:], binary.LittleEndian)
+	case len(b) >= 2 && b[0] == 0xFE && b[1] == 0xFF:
+		return decodeUTF16(b[2:], binary.BigEndian)
+	}
+	if order := sniffUTF16(b); order != nil {
+		return decodeUTF16(b, order)
+	}
 	b = []byte(strings.TrimPrefix(string(b), "\xef\xbb\xbf"))
 	if utf8.Valid(b) {
 		return string(b)
@@ -33,6 +45,45 @@ func decodeText(b []byte) string {
 		}
 	}
 	return sb.String()
+}
+
+func decodeUTF16(b []byte, order binary.ByteOrder) string {
+	u := make([]uint16, 0, len(b)/2)
+	for i := 0; i+1 < len(b); i += 2 { // a stray last byte is dropped
+		u = append(u, order.Uint16(b[i:]))
+	}
+	return strings.TrimPrefix(string(utf16.Decode(u)), "\uFEFF")
+}
+
+// sniffUTF16 recognises UTF-16 text that has no byte-order mark. Subtitle files
+// are mostly digits and punctuation, which in 16-bit text leave a zero byte next
+// to every one of them, in the same position each time; text in any 8-bit
+// encoding has no zero bytes at all.
+func sniffUTF16(b []byte) binary.ByteOrder {
+	if len(b) > 512 {
+		b = b[:512]
+	}
+	pairs := len(b) / 2
+	if pairs < 4 {
+		return nil
+	}
+	var even, odd int // zero bytes at even and at odd positions
+	for i, c := range b[:pairs*2] {
+		if c == 0 {
+			if i%2 == 0 {
+				even++
+			} else {
+				odd++
+			}
+		}
+	}
+	switch {
+	case odd*4 >= pairs && odd >= 4*even: // 'A' is 41 00: the high byte comes second
+		return binary.LittleEndian
+	case even*4 >= pairs && even >= 4*odd:
+		return binary.BigEndian
+	}
+	return nil
 }
 
 var srtTiming = regexp.MustCompile(`^(\s*)(\d{1,3}):(\d{2}):(\d{2})[,.](\d{1,3})(\s*-->\s*)(\d{1,3}):(\d{2}):(\d{2})[,.](\d{1,3})(.*)$`)

@@ -180,6 +180,18 @@ export interface ScanCounts {
   items_updated: number;
   items_moved: number;
   items_missing: number;
+  /** Subtitle files that sit among videos but match none of them by name. */
+  subs_unpaired?: number;
+  /** The first of them, as "course/section/file.srt". */
+  unpaired_subs?: string[];
+}
+
+/** When the server scans by itself (apart from start-up and "Scan now"). */
+export interface ScanSchedule {
+  mode: 'daily' | 'interval' | 'off';
+  at?: string; // daily: "03:00"
+  every_seconds?: number; // interval
+  zone?: string; // daily: the time zone the time is in
 }
 
 export interface ScanStatus {
@@ -193,6 +205,9 @@ export interface ScanStatus {
   current?: string;
   errors?: string[];
   last?: ScanCounts;
+  schedule?: ScanSchedule;
+  /** When the next scan by the clock is due. */
+  next_at?: string;
 }
 
 export type ProgressEventName =

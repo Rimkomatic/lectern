@@ -119,6 +119,8 @@ export const url = {
   /** v is the course's cover_v: a new upload gets a new URL, so no stale picture is shown. */
   cover: (courseId: number, v = 0) => `/api/v1/courses/${courseId}/cover${v > 0 ? `?v=${v}` : ''}`,
   subtitle: (id: number) => `/api/v1/subtitles/${id}`,
+  /** A picture that a text lesson refers to, written as a path beside that lesson (already percent-decoded). */
+  asset: (itemId: number, ref: string) => `/api/v1/items/${itemId}/asset?path=${encodeURIComponent(ref)}`,
   events: '/api/v1/admin/events',
 };
 

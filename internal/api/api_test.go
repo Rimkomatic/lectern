@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -88,7 +89,7 @@ func newEnv(t *testing.T) *env {
 	if _, err := app.ScanLibrary(context.Background(), libs[0], nil); err != nil {
 		t.Fatal(err)
 	}
-	runner := scan.NewRunner(app, 0, 0, log)
+	runner := scan.NewRunner(app, scan.Schedule{}, 0, log)
 
 	cfg := &config.Config{
 		SessionTTL: 24 * time.Hour, CookieSecure: "auto", DoneThreshold: 0.95,
@@ -383,6 +384,54 @@ func TestFullFlow(t *testing.T) {
 		expectStatus(t, ann.req("GET", itemPath(item(t, tr, "Docs"), "/stream"), nil), 400, "bad_request")
 		if item(t, tr, "Docs").LinkURL != "https://go.dev/doc/" {
 			t.Error("link url missing from tree")
+		}
+	})
+
+	t.Run("pictures beside a page", func(t *testing.T) {
+		png := []byte("\x89PNG\r\n\x1a\nnot really a picture")
+		put(t, e.root, "Go Basics/01 - Intro/images/pic.png", png)
+		put(t, e.root, "Go Basics/01 - Intro/images/My Pic.JPG", png)
+		put(t, e.root, "Go Basics/01 - Intro/images/vector.svg", []byte("<svg/>"))
+		put(t, e.root, "Go Basics/01 - Intro/images/notes.txt", []byte("text"))
+		put(t, e.root, "Go Basics/top.png", png)
+		put(t, e.root, "Podcasts/other.png", png)
+		// the library is scanned again further down: leave it as it was
+		t.Cleanup(func() {
+			os.RemoveAll(filepath.Join(e.root, "Go Basics", "01 - Intro", "images"))
+			os.Remove(filepath.Join(e.root, "Go Basics", "top.png"))
+			os.Remove(filepath.Join(e.root, "Podcasts", "other.png"))
+		})
+		page := item(t, tr, "Page")
+		asset := func(ref string) string { return itemPath(page, "/asset?path="+url.QueryEscape(ref)) }
+
+		for _, ref := range []string{
+			"images/pic.png", "./images/pic.png", `images\pic.png`, "images/pic.png?v=2#top",
+			"images/My Pic.JPG", "images/../images/pic.png",
+			"../top.png", // the course folder is as far up as it goes
+			"/top.png",   // from the course folder
+		} {
+			r := ann.req("GET", asset(ref), nil)
+			if r.StatusCode != 200 || !bytes.Equal(r.body, png) {
+				t.Errorf("%q: %d %q", ref, r.StatusCode, r.body)
+				continue
+			}
+			if ct := r.Header.Get("Content-Type"); !strings.HasPrefix(ct, "image/") || r.Header.Get("X-Content-Type-Options") != "nosniff" {
+				t.Errorf("%q: headers %v", ref, r.Header)
+			}
+		}
+		for _, ref := range []string{
+			"", "images/missing.png", "images/vector.svg", "images/notes.txt", "images", "05 - Page.html",
+			"../../Podcasts/other.png", "../../../etc/passwd.png", "/../../Podcasts/other.png", "images/../../../Podcasts/other.png",
+			"https://example.com/pic.png", "//example.com/pic.png", "images/pic.png\x00.txt", "data:image/png;base64,AAAA",
+		} {
+			if r := ann.req("GET", asset(ref), nil); r.StatusCode != 404 || bytes.Contains(r.body, png) {
+				t.Errorf("%q should be refused: %d", ref, r.StatusCode)
+			}
+		}
+		expectStatus(t, e.client().req("GET", asset("images/pic.png"), nil), 401, "unauthorized")
+		// a link has no folder to look in
+		if r := ann.req("GET", itemPath(item(t, tr, "Docs"), "/asset?path=pic.png"), nil); r.StatusCode != 404 {
+			t.Errorf("link item: %d", r.StatusCode)
 		}
 	})
 

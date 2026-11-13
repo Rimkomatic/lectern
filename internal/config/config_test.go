@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -64,5 +65,71 @@ func TestLoadDotEnv(t *testing.T) {
 	}
 	if err := LoadDotEnv(filepath.Join(dir, "missing.env")); err != nil {
 		t.Errorf("missing file should be ignored: %v", err)
+	}
+}
+
+func TestParseClock(t *testing.T) {
+	good := map[string][2]int{"03:00": {3, 0}, "3:00": {3, 0}, "00:00": {0, 0}, "23:59": {23, 59}, " 04:30 ": {4, 30}}
+	for in, want := range good {
+		h, m, err := ParseClock(in)
+		if err != nil || h != want[0] || m != want[1] {
+			t.Errorf("ParseClock(%q) = %d, %d, %v; want %v", in, h, m, err, want)
+		}
+	}
+	for _, in := range []string{"", "3", "3pm", "03h00", "24:00", "12:60", "12:5", "123:00", "-1:00", "+3:00", "03:00:00", "ab:cd", "3:0a", "03.00", ":30"} {
+		if _, _, err := ParseClock(in); err == nil {
+			t.Errorf("ParseClock(%q) should fail", in)
+		}
+	}
+}
+
+func TestLoadScanSchedule(t *testing.T) {
+	load := func(at, every string) (*Config, error) {
+		t.Setenv("MYSQL_PASSWORD", "secret")
+		t.Setenv("LECTERN_SCAN_AT", at)
+		t.Setenv("LECTERN_SCAN_INTERVAL", every)
+		return Load()
+	}
+	type plan struct {
+		daily     bool
+		hour, min int
+		every     time.Duration
+	}
+	for _, tc := range []struct {
+		name, at, every string
+		want            plan
+	}{
+		{"default is 03:00 every day", "", "", plan{daily: true, hour: 3}},
+		{"another time", "04:15", "", plan{daily: true, hour: 4, min: 15}},
+		{"a time without the leading zero", "5:05", "", plan{daily: true, hour: 5, min: 5}},
+		{"switched off", "off", "", plan{}},
+		{"switched off with never", "Never", "", plan{}},
+		{"the older setting still works", "", "30m", plan{every: 30 * time.Minute}},
+		{"the older setting, days", "", "1d", plan{every: 24 * time.Hour}},
+		{"the older way to switch off", "", "0", plan{}},
+		{"the older way to switch off, as a word", "", "off", plan{}},
+	} {
+		c, err := load(tc.at, tc.every)
+		if err != nil {
+			t.Errorf("%s: %v", tc.name, err)
+			continue
+		}
+		got := plan{c.ScanDaily, c.ScanAtHour, c.ScanAtMinute, c.ScanInterval}
+		if got != tc.want {
+			t.Errorf("%s: got %+v, want %+v", tc.name, got, tc.want)
+		}
+	}
+	for _, tc := range []struct{ name, at, every, mention string }{
+		{"both settings", "03:00", "15m", "not both"},
+		{"both, one of them off", "off", "15m", "not both"},
+		{"a bad time", "3am", "", "LECTERN_SCAN_AT"},
+		{"a time that does not exist", "25:00", "", "HH:MM"},
+		{"a bad interval", "", "soon", "LECTERN_SCAN_INTERVAL"},
+		{"a negative interval", "", "-5m", "negative"},
+	} {
+		_, err := load(tc.at, tc.every)
+		if err == nil || !strings.Contains(err.Error(), tc.mention) {
+			t.Errorf("%s: error = %v, want one mentioning %q", tc.name, err, tc.mention)
+		}
 	}
 }

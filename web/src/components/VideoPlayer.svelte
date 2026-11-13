@@ -1,5 +1,6 @@
 <script lang="ts">
   import { url } from '../lib/api';
+  import { loadCaptions, pickTrack, saveCaptions, trackForKey } from '../lib/captions';
   import { ChapterTracker } from '../lib/chapters';
   import type { IconName } from '../lib/icons';
   import type { Patch, ProgressReporter } from '../lib/progress';
@@ -106,6 +107,48 @@
     // prompt leaves the saved spot alone.
     reporter.report('open', { duration, ...(startAt > 0 ? { position: startAt } : {}) });
     if (autoplay) void m.play().catch(() => undefined); // the browser may still refuse
+    applyRememberedCaptions();
+  }
+
+  // ---- captions ----
+  // Which subtitle track is showing is remembered per device: choose one (in the
+  // player's own menu or with C) and the lessons after it start the same way.
+
+  let shown = -1; // the track we believe is showing; a change that matches it is our own
+  let captionsReady = false; // set once the remembered choice is applied: a browser's own pick before that is not a choice
+
+  function captionTracks(): TextTrack[] {
+    const m = media;
+    if (!m || item.kind === 'audio') return []; // there is nowhere to draw them over a sound file
+    return Array.from(m.textTracks).filter((t) => t.kind === 'subtitles' || t.kind === 'captions');
+  }
+
+  /** Shows the track at `index` (or none, for -1) and nothing else. */
+  function showCaptions(list: TextTrack[], index: number) {
+    shown = index;
+    list.forEach((t, i) => (t.mode = i === index ? 'showing' : 'disabled'));
+  }
+
+  function rememberCaptions(list: TextTrack[], index: number) {
+    const before = loadCaptions();
+    saveCaptions(index >= 0 ? { on: true, lang: list[index].language } : { on: false, lang: before?.lang ?? '' });
+  }
+
+  function applyRememberedCaptions() {
+    const list = captionTracks();
+    if (list.length === 0) return;
+    showCaptions(list, pickTrack(list.map((t) => ({ lang: t.language })), loadCaptions()));
+    captionsReady = true;
+  }
+
+  // The player's own captions menu: whatever the person picks there is remembered.
+  function handleTracksChange() {
+    if (!captionsReady) return;
+    const list = captionTracks();
+    const now = list.findIndex((t) => t.mode === 'showing');
+    if (now === shown) return; // our own doing
+    shown = now;
+    rememberCaptions(list, now);
   }
 
   /** The person acted after the end (replay, skip back): the page should stop waiting to move on. */
@@ -186,6 +229,26 @@
         return;
       }
 
+      case 'captions': {
+        const list = captionTracks();
+        if (list.length === 0) {
+          flash('captions-off', 'No captions', 'This lesson has no captions');
+          return;
+        }
+        if (list.some((t) => t.mode === 'showing')) {
+          showCaptions(list, -1);
+          rememberCaptions(list, -1);
+          flash('captions-off', 'Captions off', 'Captions off');
+          return;
+        }
+        const i = trackForKey(list.map((t) => ({ lang: t.language })), loadCaptions());
+        showCaptions(list, i);
+        rememberCaptions(list, i);
+        const name = list[i].label || 'Captions on';
+        flash('captions', name, `Captions on: ${name}`);
+        return;
+      }
+
       case 'volume': {
         // Up also lifts a mute; Down keeps whatever mute there is.
         if (a.delta > 0 && m.muted) m.muted = false;
@@ -236,6 +299,13 @@
       window.removeEventListener('keydown', onKeyDown, true);
       window.removeEventListener('keyup', onKeyUp, true);
     };
+  });
+
+  $effect(() => {
+    const list = media?.textTracks;
+    if (!list) return;
+    list.addEventListener('change', handleTracksChange);
+    return () => list.removeEventListener('change', handleTracksChange);
   });
 
   // Start every lesson at the volume the person last chose on this device.

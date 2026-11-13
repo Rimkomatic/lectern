@@ -15,6 +15,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	_ "time/tzdata" // zone rules inside the binary: the image has no zoneinfo files, and TZ=Europe/Berlin must work
 
 	"lectern/internal/api"
 	"lectern/internal/auth"
@@ -102,7 +103,9 @@ func run(cfg *config.Config, log *slog.Logger) error {
 	}
 
 	app := &scan.Applier{Store: st, Log: log, Follow: cfg.FollowSymlinks}
-	runner := scan.NewRunner(app, cfg.ScanInterval, cfg.MissingRetention, log)
+	sched := scan.Schedule{Daily: cfg.ScanDaily, Hour: cfg.ScanAtHour, Minute: cfg.ScanAtMinute, Every: cfg.ScanInterval}
+	runner := scan.NewRunner(app, sched, cfg.MissingRetention, log)
+	log.Info("automatic scans", "schedule", sched.String())
 	go runner.Run(ctx)
 	go purgeSessions(ctx, st, log)
 
