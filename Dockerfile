@@ -12,7 +12,7 @@
 # the last stage only copies files. Needs BuildKit, which Docker uses by default.
 
 # ---- 1. Web app --------------------------------------------------------------
-FROM --platform=$BUILDPLATFORM node:22-alpine AS web
+FROM --platform=$BUILDPLATFORM node:26-alpine AS web
 WORKDIR /src/web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci --no-audit --no-fund
