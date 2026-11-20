@@ -38,7 +38,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /out/lectern ./cmd/lectern
 
 # ---- 3. Runtime image --------------------------------------------------------
-FROM alpine:3.22
+FROM alpine:3.24
 LABEL org.opencontainers.image.title="Lectern" \
       org.opencontainers.image.description="Self-hosted course server: folders of videos, PDFs and files with per-user progress" \
       org.opencontainers.image.licenses="MIT"
