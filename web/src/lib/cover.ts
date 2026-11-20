@@ -20,9 +20,9 @@ export function coverIndex(title: string): number {
   return hashString(title.trim().toLowerCase()) % COVER_COUNT;
 }
 
-/** "Learn Rust by Building Real Applications" -> "LR"; "[TutsNode.com] - Learn Rust" -> "LR". */
+/** "Learn Rust by Building Real Applications" -> "LR"; "[Example.com] - Learn Rust" -> "LR". */
 export function initials(title: string): string {
-  // Release-group tags like "[TutsNode.com]" or "(2024)" say nothing about the course.
+  // Tags in brackets, like "[Example.com]" or "(2024)", say nothing about the course.
   const stripped = title.replace(/\[[^\]]*\]|\([^)]*\)/g, ' ');
   const base = /[\p{L}\p{N}]/u.test(stripped) ? stripped : title;
   const words = base

@@ -25,6 +25,7 @@ type Server struct {
 	Version string
 
 	login    *auth.Limiter
+	started  time.Time // when the server was built; the setup window counts from here
 	shutdown chan struct{}
 	once     sync.Once
 }
@@ -33,6 +34,7 @@ func New(cfg *config.Config, st *store.Store, runner *scan.Runner, static http.H
 	return &Server{
 		Cfg: cfg, Store: st, Runner: runner, Static: static, Version: version, Log: log,
 		login:    auth.NewLimiter(8, 15*time.Minute),
+		started:  time.Now(),
 		shutdown: make(chan struct{}),
 	}
 }

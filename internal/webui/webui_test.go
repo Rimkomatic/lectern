@@ -60,3 +60,24 @@ func TestPlaceholderWithoutUI(t *testing.T) {
 		t.Errorf("placeholder: %d %s", rec.Code, rec.Body.String())
 	}
 }
+
+// The small container image has no /etc/mime.types, so the manifest's type has
+// to come from the program itself.
+func TestManifestType(t *testing.T) {
+	h := handler(fstest.MapFS{
+		"index.html":           {Data: []byte("<!doctype html>")},
+		"manifest.webmanifest": {Data: []byte(`{"name":"Lectern"}`)},
+		"robots.txt":           {Data: []byte("User-agent: *\nDisallow: /\n")},
+		"icons/icon-192.png":   {Data: []byte("\x89PNG\r\n\x1a\n")},
+	})
+	rec := get(h, "GET", "/manifest.webmanifest")
+	if ct := rec.Header().Get("Content-Type"); rec.Code != 200 || !strings.HasPrefix(ct, "application/manifest+json") {
+		t.Errorf("manifest: %d %q", rec.Code, ct)
+	}
+	if rec = get(h, "GET", "/robots.txt"); rec.Code != 200 || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/plain") {
+		t.Errorf("robots.txt: %d %v", rec.Code, rec.Header())
+	}
+	if rec = get(h, "GET", "/icons/icon-192.png"); rec.Code != 200 || rec.Header().Get("Content-Type") != "image/png" {
+		t.Errorf("icon: %d %v", rec.Code, rec.Header())
+	}
+}

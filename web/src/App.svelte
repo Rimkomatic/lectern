@@ -11,6 +11,7 @@
   import Login from './pages/Login.svelte';
   import Settings from './pages/Settings.svelte';
   import Setup from './pages/Setup.svelte';
+  import SetupClosed from './pages/SetupClosed.svelte';
   import Watch from './pages/Watch.svelte';
 
   const route = $derived(router.route);
@@ -40,7 +41,11 @@
     </div>
   </main>
 {:else if session.needsSetup}
-  <Setup />
+  {#if session.setupClosed}
+    <SetupClosed />
+  {:else}
+    <Setup />
+  {/if}
 {:else if !session.user}
   <Login />
 {:else}

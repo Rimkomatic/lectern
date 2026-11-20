@@ -189,6 +189,7 @@ func (s *Server) securityHeaders(next http.Handler) http.Handler {
 		h.Set("Referrer-Policy", "same-origin")
 		h.Set("X-Frame-Options", "SAMEORIGIN")
 		h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()")
+		h.Set("X-Robots-Tag", "noindex, nofollow") // a private server: nothing for search engines
 		next.ServeHTTP(w, r)
 	})
 }

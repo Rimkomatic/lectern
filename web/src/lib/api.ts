@@ -71,7 +71,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 }
 
 export const api = {
-  setupStatus: () => request<{ needs_setup: boolean; version: string }>('GET', '/setup'),
+  setupStatus: () => request<{ needs_setup: boolean; setup_closed?: boolean; version: string }>('GET', '/setup'),
   setup: (username: string, password: string, display_name: string) =>
     request<Me>('POST', '/setup', { username, password, display_name }),
   login: (username: string, password: string) => request<Me>('POST', '/auth/login', { username, password }),

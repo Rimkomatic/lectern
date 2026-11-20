@@ -27,7 +27,7 @@ describe('initials', () => {
   });
   it('copes with one word, symbols and other scripts', () => {
     expect(initials('rust')).toBe('R');
-    expect(initials('[TutsNode.com] - Learn Rust')).toBe('LR');
+    expect(initials('[Example.com] - Learn Rust')).toBe('LR');
     expect(initials('[Tag] (2024)')).toBe('T2'); // nothing else to go on: keep the tag
     expect(initials('日本語 入門')).toBe('日入');
     expect(initials('???')).toBe('•');

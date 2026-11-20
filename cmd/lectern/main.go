@@ -32,6 +32,8 @@ var version = "dev"
 func main() {
 	healthcheck := flag.Bool("healthcheck", false, "probe the local /healthz endpoint and exit (for container health checks)")
 	showVersion := flag.Bool("version", false, "print the version and exit")
+	resetUser := flag.String("reset-password", "", "give `USER` a new password (a random one unless -password-stdin) and sign them out everywhere, then exit")
+	passwordStdin := flag.Bool("password-stdin", false, "with -reset-password: read the new password from standard input instead of choosing one")
 	flag.Parse()
 
 	if *showVersion {
@@ -44,6 +46,13 @@ func main() {
 	}
 	if *healthcheck {
 		os.Exit(runHealthcheck())
+	}
+	if *passwordStdin && *resetUser == "" {
+		fmt.Fprintln(os.Stderr, "-password-stdin only works together with -reset-password USER")
+		os.Exit(2)
+	}
+	if *resetUser != "" {
+		os.Exit(runResetPassword(*resetUser, *passwordStdin))
 	}
 
 	cfg, err := config.Load()
@@ -109,6 +118,7 @@ func run(cfg *config.Config, log *slog.Logger) error {
 	go runner.Run(ctx)
 	go purgeSessions(ctx, st, log)
 
+	announceSetup(ctx, cfg, st, log)
 	srv := api.New(cfg, st, runner, webui.Handler(), version, log)
 	httpSrv := &http.Server{
 		Addr:    cfg.ListenAddr,
@@ -169,6 +179,40 @@ func bootstrapAdmin(ctx context.Context, cfg *config.Config, st *store.Store, lo
 	}
 	log.Info("created the first admin from the environment", "user", cfg.AdminUser)
 	return nil
+}
+
+// announceSetup tells whoever reads the log that nobody has an account yet,
+// and how long the setup page will let them create the administrator.
+func announceSetup(ctx context.Context, cfg *config.Config, st *store.Store, log *slog.Logger) {
+	if n, err := st.CountUsers(ctx); err != nil || n > 0 {
+		return
+	}
+	if cfg.SetupWindow > 0 {
+		log.Warn("nobody has an account yet: open Lectern in your browser and create the administrator within " +
+			describeDuration(cfg.SetupWindow) + ". After that the setup page closes until Lectern is restarted.")
+		return
+	}
+	log.Warn("nobody has an account yet, and the setup page is open to anyone who can reach this address " +
+		"(LECTERN_SETUP_WINDOW=forever): create the administrator now")
+}
+
+// describeDuration writes 15 minutes, 1 hour or 2 days instead of 15m0s.
+func describeDuration(d time.Duration) string {
+	unit := func(n time.Duration, name string) string {
+		if n == 1 {
+			return "1 " + name
+		}
+		return fmt.Sprintf("%d %ss", n, name)
+	}
+	switch {
+	case d >= 24*time.Hour && d%(24*time.Hour) == 0:
+		return unit(d/(24*time.Hour), "day")
+	case d >= time.Hour && d%time.Hour == 0:
+		return unit(d/time.Hour, "hour")
+	case d >= time.Minute && d%time.Minute == 0:
+		return unit(d/time.Minute, "minute")
+	}
+	return d.Round(time.Second).String()
 }
 
 func purgeSessions(ctx context.Context, st *store.Store, log *slog.Logger) {

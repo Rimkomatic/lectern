@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Builds the image from this source tree, starts the real compose setup
 # (docker-compose.yml + docker-compose.build.yml) with a throw-away .env, one
-# sample course and a first administrator, and checks it over HTTP.
+# sample course and a first administrator, and checks it over HTTP. Then it
+# resets the administrator's password with the command the README gives for a
+# forgotten password, once with a random password and once with a chosen one.
 #
 # CI runs this (.github/workflows/ci.yml). On your own machine it needs port
 # 18081 free (SMOKE_PORT) and no other Lectern containers, because the
@@ -49,3 +51,21 @@ echo "== building and starting (waits until the app is healthy)"
 compose up -d --build --wait --wait-timeout 300
 
 e2e/http-smoke.sh "http://127.0.0.1:$PORT" admin "$ADMIN_PASSWORD" "Sample course"
+
+echo "== resetting the password with the README's command (random password)"
+out="$(compose exec -T app lectern -reset-password admin)"
+echo "$out"
+random_password="$(sed -n 's/^  New password: //p' <<<"$out")"
+[ -n "$random_password" ] || { echo "FAILED: the command printed no new password"; exit 1; }
+e2e/http-smoke.sh "http://127.0.0.1:$PORT" admin "$random_password" "Sample course"
+if curl -fsS -H 'Content-Type: application/json' \
+    -d "{\"username\":\"admin\",\"password\":\"$ADMIN_PASSWORD\"}" \
+    "http://127.0.0.1:$PORT/api/v1/auth/login" >/dev/null 2>&1; then
+  echo "FAILED: the old password still works after the reset"
+  exit 1
+fi
+
+echo "== resetting the password with the README's command (a chosen password)"
+chosen_password="chosen-smoke-password"
+printf '%s\n' "$chosen_password" | compose exec -T app lectern -reset-password admin -password-stdin
+e2e/http-smoke.sh "http://127.0.0.1:$PORT" admin "$chosen_password" "Sample course"

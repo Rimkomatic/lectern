@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { api, messageOf } from '../lib/api';
+  import { ApiError, api, messageOf } from '../lib/api';
   import { setTitle } from '../lib/brand';
-  import { applyMe } from '../lib/session.svelte';
+  import { applyMe, markSetupClosed } from '../lib/session.svelte';
   import AuthLayout from '../components/AuthLayout.svelte';
   import Icon from '../components/Icon.svelte';
   import PasswordField from '../components/PasswordField.svelte';
@@ -31,7 +31,8 @@
     try {
       applyMe(await api.setup(username.trim(), password, displayName.trim() || username.trim()));
     } catch (err) {
-      error = messageOf(err);
+      if (err instanceof ApiError && err.code === 'setup_closed') markSetupClosed();
+      else error = messageOf(err);
     } finally {
       busy = false;
     }

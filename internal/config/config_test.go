@@ -133,3 +133,57 @@ func TestLoadScanSchedule(t *testing.T) {
 		}
 	}
 }
+
+func TestParseSetupWindow(t *testing.T) {
+	for in, want := range map[string]time.Duration{
+		"":          DefaultSetupWindow,
+		"   ":       DefaultSetupWindow,
+		"15m":       15 * time.Minute,
+		"2h":        2 * time.Hour,
+		"1d":        24 * time.Hour,
+		"90s":       90 * time.Second,
+		"forever":   0,
+		"Forever":   0,
+		" always ":  0,
+		"unlimited": 0,
+	} {
+		got, err := ParseSetupWindow(in)
+		if err != nil || got != want {
+			t.Errorf("ParseSetupWindow(%q) = %v, %v; want %v", in, got, err, want)
+		}
+	}
+	if DefaultSetupWindow != 15*time.Minute {
+		t.Errorf("the documented default is 15 minutes, got %v", DefaultSetupWindow)
+	}
+	// Words that could mean "no limit" or "never open" must not be guessed at.
+	for _, in := range []string{"0", "off", "Never", "disabled", "false"} {
+		if d, err := ParseSetupWindow(in); err == nil || !strings.Contains(err.Error(), "two opposite things") {
+			t.Errorf("ParseSetupWindow(%q) = %v, %v; want the ambiguity error", in, d, err)
+		}
+	}
+	for _, in := range []string{"soon", "15", "-5m", "0s", "0m"} {
+		if d, err := ParseSetupWindow(in); err == nil || !strings.Contains(err.Error(), "LECTERN_SETUP_WINDOW") {
+			t.Errorf("ParseSetupWindow(%q) = %v, %v; want an error that names the setting", in, d, err)
+		}
+	}
+}
+
+func TestLoadSetupWindow(t *testing.T) {
+	load := func(v string) (*Config, error) {
+		t.Setenv("MYSQL_PASSWORD", "secret")
+		t.Setenv("LECTERN_SETUP_WINDOW", v)
+		return Load()
+	}
+	if c, err := load(""); err != nil || c.SetupWindow != DefaultSetupWindow {
+		t.Errorf("default: %v, %v", c, err)
+	}
+	if c, err := load("30m"); err != nil || c.SetupWindow != 30*time.Minute {
+		t.Errorf("30m: %v, %v", c, err)
+	}
+	if c, err := load("forever"); err != nil || c.SetupWindow != 0 {
+		t.Errorf("forever: %v, %v", c, err)
+	}
+	if _, err := load("never"); err == nil {
+		t.Error("an ambiguous value must stop Lectern from starting")
+	}
+}

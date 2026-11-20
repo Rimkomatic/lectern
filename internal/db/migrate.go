@@ -52,6 +52,30 @@ func loadMigrations() ([]migration, error) {
 	return out, nil
 }
 
+// checkNotNewer refuses a database that a newer Lectern has already moved
+// forward. An older version would run against tables it does not know and could
+// quietly damage them, so it stops and says what to do instead.
+func checkNotNewer(applied map[int]bool, known []migration) error {
+	newest := 0
+	for _, m := range known {
+		if m.version > newest {
+			newest = m.version
+		}
+	}
+	latest := 0
+	for v := range applied {
+		if v > latest {
+			latest = v
+		}
+	}
+	if latest <= newest {
+		return nil
+	}
+	return fmt.Errorf("this database was upgraded by a newer version of Lectern (its schema is at version %d, "+
+		"this version only knows up to %d). Run the newer version again, or restore the database from a backup "+
+		"made before the upgrade. Nothing has been changed", latest, newest)
+}
+
 // Migrate applies pending migrations. A MySQL advisory lock serialises
 // concurrent starts. DDL is not transactional in MySQL, so each migration file
 // should be small and re-runnable (CREATE TABLE IF NOT EXISTS, ...).
@@ -113,6 +137,9 @@ func Migrate(ctx context.Context, c config.DB, log *slog.Logger) error {
 
 	migs, err := loadMigrations()
 	if err != nil {
+		return err
+	}
+	if err := checkNotNewer(applied, migs); err != nil {
 		return err
 	}
 	for _, m := range migs {

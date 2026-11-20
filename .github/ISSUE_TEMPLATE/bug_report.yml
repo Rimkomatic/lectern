@@ -1,0 +1,54 @@
+name: Bug report
+description: Something does not work the way the README says it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. The more you fill in, the faster it can be fixed.
+
+        **A security problem?** Please do not open an issue. Use *Security → Report a vulnerability* on this repository instead (see `SECURITY.md`).
+  - type: input
+    id: version
+    attributes:
+      label: Lectern version
+      description: "Run `docker compose exec app lectern -version`, or look at the version shown by `/healthz` (for example http://localhost:8080/healthz)."
+      placeholder: "0.2.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How do you run it?
+      options:
+        - Docker Compose, with the file from the releases page
+        - Docker, with my own compose file or `docker run`
+        - Built from source
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, what did you get instead? Screenshots help.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log lines
+      description: "The end of `docker compose logs app --tail 100`. Remove anything private."
+      render: shell
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and device
+      description: For a problem in the web page, or a video that will not play.
+      placeholder: "Firefox 140 on Linux, Safari on an iPhone 15, ..."
+  - type: textarea
+    id: file
+    attributes:
+      label: About a file that will not play?
+      description: "Lectern does not convert files; the browser has to understand them. The output of `ffprobe -hide_banner your-file.mp4` tells which codecs it uses."
+      render: text

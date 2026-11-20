@@ -140,6 +140,33 @@ func (s *Store) SetPassword(ctx context.Context, id uint64, pwHash string) error
 	return nil
 }
 
+// ResetPassword replaces a user's password and signs them out on every
+// device, both or neither. The command line uses it for someone who is locked
+// out.
+func (s *Store) ResetPassword(ctx context.Context, id uint64, pwHash string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var found uint64
+	err = tx.QueryRowContext(ctx, `SELECT id FROM users WHERE id = ? FOR UPDATE`, id).Scan(&found)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE users SET pw_hash = ? WHERE id = ?`, pwHash, id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE user_id = ?`, id); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 type UserPatch struct {
 	DisplayName *string
 	Role        *string

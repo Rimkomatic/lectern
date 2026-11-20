@@ -45,8 +45,13 @@ type Config struct {
 	DoneThreshold    float64 // fraction of a video/audio that counts as finished
 	AdminUser        string
 	AdminPassword    string
+	SetupWindow      time.Duration // how long after start-up the setup page may create the first admin; 0 = for ever
 	LogLevel         string
 }
+
+// DefaultSetupWindow is how long the first-run setup page stays open after
+// Lectern starts, unless LECTERN_SETUP_WINDOW says otherwise.
+const DefaultSetupWindow = 15 * time.Minute
 
 func Load() (*Config, error) {
 	c := &Config{}
@@ -107,8 +112,38 @@ func Load() (*Config, error) {
 
 	c.AdminUser = env("LECTERN_ADMIN_USER", "")
 	c.AdminPassword = env("LECTERN_ADMIN_PASSWORD", "")
+	if c.SetupWindow, err = ParseSetupWindow(env("LECTERN_SETUP_WINDOW", "")); err != nil {
+		return nil, err
+	}
 	c.LogLevel = strings.ToLower(env("LECTERN_LOG_LEVEL", "info"))
 	return c, nil
+}
+
+// ParseSetupWindow reads LECTERN_SETUP_WINDOW: how long the setup page, which
+// lets whoever opens it create the administrator, stays open after Lectern
+// starts. Empty means the default (15 minutes); "forever" means no limit
+// (returned as 0). Words such as 0, off or never are refused because they
+// could be read both ways: "no limit" and "never open".
+func ParseSetupWindow(s string) (time.Duration, error) {
+	s = strings.TrimSpace(s)
+	switch strings.ToLower(s) {
+	case "":
+		return DefaultSetupWindow, nil
+	case "forever", "always", "unlimited":
+		return 0, nil
+	}
+	hint := `write a time such as 15m, 2h or 1d, or "forever" to keep the setup page open until somebody uses it`
+	if isOffWord(s) {
+		return 0, fmt.Errorf("LECTERN_SETUP_WINDOW=%s could mean two opposite things: %s", s, hint)
+	}
+	d, err := ParseDuration(s)
+	if err != nil {
+		return 0, fmt.Errorf("LECTERN_SETUP_WINDOW=%s: %s", s, hint)
+	}
+	if d <= 0 {
+		return 0, fmt.Errorf("LECTERN_SETUP_WINDOW=%s must be longer than zero: %s", s, hint)
+	}
+	return d, nil
 }
 
 // loadScanSchedule reads LECTERN_SCAN_AT (a time of day, the default being

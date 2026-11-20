@@ -12,6 +12,8 @@ export const defaultSettings: Settings = {
 export const session = $state<{
   ready: boolean;
   needsSetup: boolean;
+  /** No account exists, but the setup page has closed itself (see LECTERN_SETUP_WINDOW). */
+  setupClosed: boolean;
   user: User | null;
   settings: Settings;
   version: string;
@@ -19,6 +21,7 @@ export const session = $state<{
 }>({
   ready: false,
   needsSetup: false,
+  setupClosed: false,
   user: null,
   settings: { ...defaultSettings },
   version: '',
@@ -31,6 +34,11 @@ export function applyMe(me: Me): void {
   session.needsSetup = false;
 }
 
+/** The server turned the setup away because its time ran out while the form was open. */
+export function markSetupClosed(): void {
+  session.setupClosed = true;
+}
+
 /** Finds out whether the server needs first-time setup or we are signed in. */
 export async function bootstrap(): Promise<void> {
   try {
@@ -38,6 +46,7 @@ export async function bootstrap(): Promise<void> {
     session.version = s.version;
     if (s.needs_setup) {
       session.needsSetup = true;
+      session.setupClosed = s.setup_closed === true;
     } else {
       try {
         applyMe(await api.me());

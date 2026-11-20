@@ -4,10 +4,18 @@ package webui
 
 import (
 	"io/fs"
+	"mime"
 	"net/http"
 	"path"
 	"strings"
 )
+
+func init() {
+	// Go has no entry for this one, and the small container image has no
+	// /etc/mime.types to learn it from: without this the manifest would be
+	// sent as plain text.
+	_ = mime.AddExtensionType(".webmanifest", "application/manifest+json")
+}
 
 // csp is applied to the HTML shell. Scripts and styles come only from this
 // origin; 'wasm-unsafe-eval' is for pdf.js, blob: workers/media for the player.

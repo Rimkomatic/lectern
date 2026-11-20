@@ -16,12 +16,25 @@ type meResponse struct {
 	Settings store.Settings `json:"settings"`
 }
 
+// setupOpen reports whether the setup page may still create the first
+// administrator. Whoever finds Lectern with no accounts can claim it, so the
+// page is only open for LECTERN_SETUP_WINDOW after the server started
+// (restarting opens it again); a window of 0 means for ever.
+func (s *Server) setupOpen() bool {
+	w := s.Cfg.SetupWindow
+	return w <= 0 || time.Since(s.started) < w
+}
+
 func (s *Server) getSetup(w http.ResponseWriter, r *http.Request) error {
 	n, err := s.Store.CountUsers(r.Context())
 	if err != nil {
 		return err
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"needs_setup": n == 0, "version": s.Version})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"needs_setup":  n == 0,
+		"setup_closed": n == 0 && !s.setupOpen(),
+		"version":      s.Version,
+	})
 	return nil
 }
 
@@ -63,6 +76,10 @@ func (s *Server) postSetup(w http.ResponseWriter, r *http.Request) error {
 		return err
 	} else if n > 0 {
 		return conflict("already_set_up", "setup has already been completed")
+	}
+	if !s.setupOpen() {
+		return &apiError{Status: http.StatusForbidden, Code: "setup_closed",
+			Message: "the setup page has closed for safety; restart Lectern to open it again"}
 	}
 	name := trimName(in.DisplayName, 64)
 	if name == "" {

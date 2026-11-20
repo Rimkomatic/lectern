@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Checks a running Lectern over HTTP: it is healthy, the administrator can log
+# Checks a running Lectern over HTTP: it is healthy, the page can be added to a
+# home screen and tells search engines to stay away, the administrator can log
 # in, and the library was scanned (the named course is listed).
 #
 #   e2e/http-smoke.sh http://127.0.0.1:8080 admin 'password' 'Sample course'
@@ -20,6 +21,21 @@ for _ in $(seq 1 60); do
   sleep 2
 done
 curl -fsS "$base/healthz" >/dev/null || { echo "FAILED: the server did not become healthy"; exit 1; }
+
+echo "== the home-screen manifest, its icon, and the keep-out-of-search-engines signals"
+manifest_type="$(curl -fsS -o /dev/null -w '%{content_type}' "$base/manifest.webmanifest")"
+case "$manifest_type" in
+  application/manifest+json*) ;;
+  *) echo "FAILED: /manifest.webmanifest was served as \"$manifest_type\""; exit 1 ;;
+esac
+curl -fsS "$base/manifest.webmanifest" \
+  | python3 -c 'import json, sys; m = json.load(sys.stdin); assert m["name"] and m["start_url"] and m["icons"]' \
+  || { echo "FAILED: /manifest.webmanifest is not a usable manifest"; exit 1; }
+icon_type="$(curl -fsS -o /dev/null -w '%{content_type}' "$base/icons/icon-192.png")"
+[ "$icon_type" = "image/png" ] || { echo "FAILED: the icon was served as \"$icon_type\""; exit 1; }
+curl -fsS "$base/robots.txt" | grep -qi '^disallow: /' || { echo "FAILED: /robots.txt does not disallow everything"; exit 1; }
+curl -fsS -D - -o /dev/null "$base/healthz" | grep -qi '^x-robots-tag: noindex' \
+  || { echo "FAILED: responses carry no X-Robots-Tag: noindex header"; exit 1; }
 
 echo "== logging in as $user"
 body="$(python3 -c 'import json, sys; print(json.dumps({"username": sys.argv[1], "password": sys.argv[2]}))' "$user" "$pass")"

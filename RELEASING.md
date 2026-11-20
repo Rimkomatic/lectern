@@ -42,10 +42,14 @@ Tests (`ci.yml`) run first; if one fails, nothing is published.
 ## Every release
 
 1. Update `THIRD-PARTY-NOTICES.md` if you changed dependencies.
-2. Say in the release notes if the release adds a database migration (they only
-   go forward; people should back up before updating).
-3. Tag and push: `git tag v0.2.0 && git push origin v0.2.0`.
-4. Edit the generated release notes on GitHub if you want them nicer.
+2. Add the version to `CHANGELOG.md`: what is new, and whether it adds a
+   database migration (they only go forward; people should back up before
+   updating). Keep `web/package.json` and `web/package-lock.json` at the same
+   version number.
+3. Wait for the checks on the commit you are about to release to go green, then
+   tag it and push the tag: `git tag v0.2.0 && git push origin v0.2.0`.
+4. Edit the generated release notes on GitHub (paste the entry from
+   `CHANGELOG.md`).
 
 Version numbers: `MAJOR.MINOR.PATCH`. Use a `-rc.1` style suffix for a trial
 release. The version is built into the program (`lectern -version`, and the

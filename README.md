@@ -1,27 +1,57 @@
 # Lectern
 
-A self-hosted course server in the spirit of Udemy and Jellyfin. Point it at a
-folder of courses (videos, PDFs, images, spreadsheets, links, anything) and
-everyone on your server gets a course player with progress tracking and
-"continue where you left off".
+**Your own course library, on your own server.** Put your course videos, PDFs
+and notes in folders, point Lectern at them, and everyone at home or on your
+team gets a clean course player: sections, a "continue where you left off"
+button, and progress remembered for each person. Free and open source, and it
+sends nothing to anyone.
 
-**Status:** early releases (0.x). The backend and the frontend work end to end,
-with a styled interface (light and dark). It runs in Docker: a prebuilt image
-(`ghcr.io/rimkomatic/lectern`, for amd64 and arm64) plus the official MySQL
-image in a second container, started by one compose file with the ports,
-passwords and paths from `.env`.
+[![CI](https://github.com/Rimkomatic/lectern/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Rimkomatic/lectern/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Rimkomatic/lectern)](https://github.com/Rimkomatic/lectern/releases)
+[![Licence: MIT](https://img.shields.io/github/license/Rimkomatic/lectern)](LICENSE)
 
-- **No transcoding.** Files are streamed as they are (HTTP range requests, so
-  seeking works) and the browser decodes them. If a browser cannot play a file,
-  the player says so and offers the download. Fix such files once with ffmpeg,
-  for example `ffmpeg -i lesson.mkv -c copy lesson.mp4` when the codecs are
-  H.264/AAC.
-- **Many users, one server.** Each person has their own progress, resume spot,
-  playback speed and settings. Accounts are created by an administrator; there
-  is no open sign-up.
-- **Everything can be downloaded.**
-- **Small.** One Go binary (about 10 MB) with the web app inside, plus MySQL.
-  The app image is that binary on a small Alpine base.
+<p align="center">
+  <img src="docs/screenshots/home.png" width="49%" alt="The home page: a gallery of courses under a Continue learning row">
+  <img src="docs/screenshots/lesson-dark.png" width="49%" alt="A lesson in dark mode, with the course outline on the left">
+</p>
+<p align="center">
+  <img src="docs/screenshots/course.png" width="58%" alt="A course page with its progress, a Continue button and the lessons">
+  <img src="docs/screenshots/phone-home.png" width="19%" alt="The home page on a phone">
+  <img src="docs/screenshots/phone-lesson.png" width="19%" alt="A talk with chapters on a phone">
+</p>
+<p align="center"><sub>The courses in these pictures are made up. <code>make screenshots</code> rebuilds them.</sub></p>
+
+Lectern is for **files you already have**: your own recordings, conference
+talks, open courseware, training material you made or may keep. It does not
+download, sell or unlock anything (see "Questions" below).
+
+## What you get
+
+- **A course player for a folder.** A folder is a course, its sub-folders are
+  sections and its files are the lessons. There is no import step: add a folder
+  and it shows up after the next scan ("Library layout" has the details).
+- **Progress for each person.** Lectern resumes at the exact second or PDF page,
+  ticks off lessons, shows percentages and keeps a "Continue learning" row.
+  Everyone has their own account, so a family or a team can share one library.
+- **Plays what browsers play.** Video and audio, PDFs, images, Markdown and web
+  pages, text and code, with subtitles (`.srt`, `.vtt`) and chapters for long
+  videos. Anything else is listed with a download button, and every file can be
+  downloaded. Files are streamed as they are, with no transcoding, so it asks
+  little of the server.
+- **Works on a phone.** The layout adapts to small screens, there are light and
+  dark themes, and it can sit on your home screen like an app (see "On a
+  phone").
+- **Private.** No account with anyone but you, no analytics, no update check:
+  the server makes no connection to the internet, and the web app loads nothing
+  from other sites. Accounts are made by an administrator (there is no open
+  sign-up), and your library is mounted read-only, so Lectern cannot change your
+  files.
+- **Easy to run.** One small Go program with the web app inside, plus MySQL,
+  started by one compose file that pulls a prebuilt image (amd64 and arm64).
+
+Lectern is young (0.x). What is described here works and is tested, but expect
+rough edges, and please open an issue when you meet one. "Not done yet", near
+the end, lists what is missing.
 
 ## Quick start (Docker)
 
@@ -52,14 +82,16 @@ image.
    images, which takes a minute or two.
 4. Open `http://localhost:8080` (or `http://<the machine>:8080` from another
    device). The first visit asks you to create the administrator account. Do
-   that right away: until then, anyone who can reach the page can. Or set
-   `LECTERN_ADMIN_USER` and `LECTERN_ADMIN_PASSWORD` in `.env` to have it
-   created at start-up.
+   that right away: until you do, anyone who can reach the page can. For safety
+   the page closes 15 minutes after Lectern starts, and opens again when
+   Lectern is restarted (`docker compose restart app`); `LECTERN_SETUP_WINDOW`
+   changes the time. Or set `LECTERN_ADMIN_USER` and `LECTERN_ADMIN_PASSWORD`
+   in `.env` to have the account created at start-up.
 
 Courses appear after the first scan, which runs at start-up. After that the
 library is scanned once a day, at 03:00 (set `TZ` in `.env` to your time zone;
 see Settings). A course you add later shows up after that scan, or at once with
-Admin → Scan now.
+Admin → Scan now. Create accounts for the other people under Admin → Users.
 
 ### Day to day
 
@@ -101,9 +133,49 @@ docker compose pull && docker compose up -d
 | `edge` | the newest commit on the main branch; it can break |
 
 What changed is on the
-[Releases](https://github.com/Rimkomatic/lectern/releases) page. A new version
-may change the database layout when it starts, and the changes only go forward,
-so take the backup above first and note the tag you were on.
+[Releases](https://github.com/Rimkomatic/lectern/releases) page and in
+`CHANGELOG.md`. A new version may change the database layout when it starts,
+and the changes only go forward, so take the backup above first and note the tag
+you were on. An older version will not start on a database that a newer one
+has upgraded (the log says "this database was upgraded by a newer version of
+Lectern") rather than risk damaging it: run the newer version again, or restore
+the backup you took before updating.
+
+### On a phone
+
+Open Lectern in the phone's browser. The layout adapts, and the course outline
+becomes a drawer. To put it on the home screen so it opens like an app:
+
+- **iPhone and iPad (Safari):** Share, then *Add to Home Screen*.
+- **Android (Chrome):** the menu, then *Install app* or *Add to Home screen*.
+  Chrome installs it as an app only when the site is served over HTTPS (see
+  "Behind a reverse proxy"); over plain `http://` you get a shortcut that opens
+  in the browser.
+
+It still needs your server: there is no offline mode.
+
+### Forgot a password?
+
+An administrator can reset any password from the server. The command prints a
+new random password once, and signs that person out on every device:
+
+```sh
+docker compose exec app lectern -reset-password alex
+```
+
+`alex` is the username (capitals do not matter; if the name is wrong, the
+command lists the accounts that exist). Give the person the new password; they
+can change it under Settings. To choose the password yourself, send it in on
+standard input (at least 8 characters):
+
+```sh
+echo 'a new long password' | docker compose exec -T app lectern -reset-password alex -password-stdin
+```
+
+Anyone who can run commands on the server can do this, so protect the server
+itself. After 8 wrong passwords within 15 minutes, for one account or from one
+address, further logins are refused until the 15 minutes are over; `docker
+compose restart app` clears that at once.
 
 ### Changing the setup
 
@@ -127,6 +199,9 @@ so take the backup above first and note the tag you were on.
   repository:
   `docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build`
   (`make image` builds the image alone, tagged `lectern:local`).
+- **Docker Hub instead of GitHub's registry:** the same image is also published
+  as `rimkomatic/lectern`. Change the `image:` line of the compose file to
+  `rimkomatic/lectern:${LECTERN_TAG:-latest}`.
 - **The image on its own** (`ghcr.io/rimkomatic/lectern`): it runs as user 10001
   unless you pass `--user`, listens on 8080, reads `/library`, has a health
   check (`lectern -healthcheck`) and takes all the `MYSQL_*` and `LECTERN_*`
@@ -150,34 +225,33 @@ so take the backup above first and note the tag you were on.
 - **Logging in answers "cross-site request blocked":** see "Behind a reverse
   proxy" below.
 
-## Run from source
+## Questions
 
-For working on Lectern itself. You need Go 1.24+, Node 22.13+ and Docker (for
-MySQL; any MySQL 8 you can reach works too).
+**Where do the courses come from?** From you. Lectern only plays files that are
+already on your disk: your own recordings, conference talks, open courseware,
+training material you made or are allowed to keep. It has no catalogue and
+does not download, sell or unlock anything. Please respect the licences of the
+courses you put in it.
 
-```sh
-cp .env.example .env     # passwords as above; uncomment LECTERN_LIBRARIES at the bottom
-make setup               # once: go mod tidy + npm ci
-make db                  # only MySQL, on 127.0.0.1:3306, waits until it is ready
-make run                 # builds the web app and the server, then starts it
-```
+**Will it play my files?** Your browser does the playing, so whatever it can
+play works: MP4 (H.264 and AAC), WebM, MP3, M4A and the like. Some containers
+and codecs (MKV, AVI, H.265) work in one browser and not in another. A file the
+browser cannot play is offered as a download, and a lossless copy into MP4 often
+fixes it: `ffmpeg -i lesson.mkv -c copy lesson.mp4` when the codecs are
+H.264 and AAC.
 
-Open <http://localhost:8080>. `make db` starts the same MySQL container and
-data volume as the Docker setup, so do not run both apps at once.
+**Can I use it away from home?** It is built for a home or office network. To
+reach it from the internet, put it behind a reverse proxy that serves HTTPS
+(see "Behind a reverse proxy"), choose long passwords and keep it updated.
+There is no sign-up form, wrong passwords are rate limited, and MySQL is not
+published on any port. `SECURITY.md` has the rest.
 
-`make setup` runs once: it fetches the Go and npm dependencies (`go mod tidy`
-keeps `go.mod` and `go.sum` in step; commit them if they change).
+**Does it send anything anywhere?** No. There is no analytics, no update check
+and no account with the project. The server talks only to its own database, and
+the web app loads nothing from other sites.
 
-Without `make`:
-
-```sh
-go mod tidy && (cd web && npm ci)
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --wait mysql
-(cd web && npm run build)
-go run ./cmd/lectern     # reads .env from the current folder
-```
-
-`make help` lists the other targets.
+**How many people can use it?** As many as you create accounts for. It is meant
+for a household, a class or a small team; each person's progress is separate.
 
 ## Library layout
 
@@ -324,7 +398,7 @@ Name the file after the video with `.chapters.txt` (or `.timestamps.txt`):
   "Library layout" for what counts as one), or drawn artwork with the course's
   initials when there is none. A "Continue learning" row sits on top; filters
   (all, in progress, not started, completed) and search sit above the gallery.
-- **The lesson page has a course-content sidebar** on the left, like Udemy's:
+- **The lesson page has a course-content sidebar** on the left:
   sections fold open and shut, every lesson shows its progress (done, started,
   not started), and the lesson on screen is highlighted. The button above the
   lesson collapses it; the choice is remembered on that device. On a phone or a
@@ -381,6 +455,7 @@ folder it starts in (real environment variables win). In Docker you only edit
 | `LECTERN_SCAN_INTERVAL` | | scan every so often instead of daily (`30m`, `6h`); use this or `LECTERN_SCAN_AT`, not both |
 | `TZ` | UTC | your time zone, for example `Europe/Berlin`; the daily scan runs at `LECTERN_SCAN_AT` in this zone. Docker: set it in `.env`. Without Docker the machine's own time zone is used |
 | `LECTERN_TRUST_PROXY` | `false` | set to `true` behind a reverse proxy, see below |
+| `LECTERN_SETUP_WINDOW` | `15m` | how long after start-up the setup page may create the first administrator (`30m`, `2h`, `1d`; `forever` removes the limit). Afterwards it stays closed until Lectern is restarted. It only matters while nobody has an account |
 
 Read by `docker compose` only, not by the app:
 
@@ -413,14 +488,47 @@ If logging in answers "cross-site request blocked", this is the cause. Another
 way out is to list the public address in `LECTERN_ALLOWED_ORIGINS`
 (`https://courses.example.com`).
 
+Course covers are uploaded through the proxy and can be up to 5 MB, so a proxy
+that limits the size of a request needs room for that (nginx:
+`client_max_body_size 6m;`, its default is 1 MB).
+
 ## Development
 
+Bug reports, ideas and pull requests are welcome: see `CONTRIBUTING.md`.
+
+### Run from source
+
+You need Go 1.24+, Node 22.13+ and Docker (for MySQL; any MySQL 8 you can reach
+works too).
+
 ```sh
-make run                # the server on :8080
-cd web && npm run dev   # the web app with hot reload on :5173, proxied to :8080
+cp .env.example .env     # passwords as above; uncomment LECTERN_LIBRARIES at the bottom
+make setup               # once: go mod tidy + npm ci
+make db                  # only MySQL, on 127.0.0.1:3306, waits until it is ready
+make run                 # builds the web app and the server, then starts it
 ```
 
-Tests:
+Open <http://localhost:8080>. `make db` starts the same MySQL container and
+data volume as the Docker setup, so do not run both apps at once.
+
+`make setup` runs once: it fetches the Go and npm dependencies (`go mod tidy`
+keeps `go.mod` and `go.sum` in step; commit them if they change).
+
+Without `make`:
+
+```sh
+go mod tidy && (cd web && npm ci)
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --wait mysql
+(cd web && npm run build)
+go run ./cmd/lectern     # reads .env from the current folder
+```
+
+`make help` lists the other targets.
+
+For the web app with hot reload, start the server as above and, in another
+terminal, `cd web && npm run dev`: it serves on :5173 and proxies to :8080.
+
+### Tests
 
 ```sh
 make db db-test         # once: MySQL, plus an empty lectern_test database
@@ -443,10 +551,12 @@ make e2e                # browser smoke test, see below
   downloads, settings, administration, a second user, the course-content
   sidebar, the theme switch, the phone drawer, the player's keyboard shortcuts,
   cover uploads, folders of only videos, single-video courses and chapters
-  (some 230 checks). It
-  needs ffmpeg, Python 3 with `pip install playwright pillow reportlab`, and
-  Chrome or Chromium (`E2E_CHROME=/path/to/chrome`, or `playwright install
-  chromium`).
+  (some 300 checks). It needs ffmpeg, Python 3 with
+  `pip install playwright pillow reportlab`, and Chrome or Chromium
+  (`E2E_CHROME=/path/to/chrome`, or `playwright install chromium`).
+- `make screenshots` retakes the pictures at the top of this file from a
+  made-up demo library (`e2e/make_demo_library.py`), with the same tools as
+  `make e2e`. It empties the test database too.
 
 GitHub Actions (`.github/workflows/`) runs all of this on every pull request,
 plus a check that the Docker setup really starts and a build for amd64 and
@@ -460,10 +570,12 @@ docker-compose.yml        the app (pulled from ghcr.io) + MySQL, configured from
 docker-compose.build.yml  builds the app image from this source instead of pulling it
 docker-compose.dev.yml    adds MySQL on 127.0.0.1 for development (make db)
 .env.example              every setting; copy it to .env
-.github/workflows/        ci.yml (tests) and release.yml (publishes the image)
-LICENSE, THIRD-PARTY-NOTICES.md, SECURITY.md, RELEASING.md
+.github/                  ci.yml (tests) and release.yml (publishes the image), issue forms, Dependabot
+LICENSE, THIRD-PARTY-NOTICES.md, SECURITY.md, RELEASING.md, CHANGELOG.md, CONTRIBUTING.md
+docs/screenshots/         the pictures at the top of this file (make screenshots)
 
-cmd/lectern        entry point (flags: --version, --healthcheck)
+cmd/lectern        entry point (flags: -version, -healthcheck, -reset-password)
+internal/accounts  resetting a password from the command line
 internal/api       HTTP API, sessions and CSRF checks, file streaming, scan events
 internal/auth      password hashing, session tokens, login rate limiting
 internal/config    environment and .env loading
@@ -474,9 +586,10 @@ internal/store     all the SQL: users, sessions, courses, progress, settings
 internal/webui     the built web app, embedded in the binary
 internal/testdb    throw-away database for tests
 web/               Svelte 5 + Vite + TypeScript source of the web app
+web/public         manifest, icons and robots.txt, copied as they are into the build
 web/src/styles     design tokens (colours, shapes), base and shared component CSS
-web/scripts        check-contrast.mjs (`npm run contrast`)
-e2e/               browser test (run.sh) and a check of the Docker setup (compose-smoke.sh)
+web/scripts        check-contrast.mjs (`npm run contrast`), the home-screen icon generator
+e2e/               browser test (run.sh), a check of the Docker setup (compose-smoke.sh), screenshots
 docker/            SQL that creates the test database
 ```
 
@@ -500,19 +613,27 @@ The compose file keeps the data in the volume `lectern-mysql`.
 
 ## Not done yet
 
-No PWA or offline mode, no full-text search, no single sign-on (OIDC or proxy headers), no "download the whole
-course" zip, no file-system watcher (scans run once a night and on request), no in-browser preview
-of spreadsheets, no translations, argon2id instead of the current
-PBKDF2-HMAC-SHA256 (600,000 rounds) for passwords, no way to edit course
-details in the interface (use `course.json`), HTML pages show without their own
-styling, scripts or links to other files of the course, subtitles must sit in
-the same folder as their video, and chapters embedded in the video file itself
-(MP4 or MKV) or in YouTube `.info.json` files are not read, only
-`.chapters.txt`.
+No offline mode (Lectern can sit on a phone's home screen, but it needs your
+server), no full-text search, no single sign-on (OIDC or proxy headers), no
+"download the whole course" zip, no file-system watcher (scans run once a night
+and on request), no in-browser preview of spreadsheets, no translations,
+argon2id instead of the current PBKDF2-HMAC-SHA256 (600,000 rounds) for
+passwords, no way to edit course details in the interface (use `course.json`),
+HTML pages show without their own styling, scripts or links to other files of
+the course, subtitles must sit in the same folder as their video, and chapters
+embedded in the video file itself (MP4 or MKV) or in YouTube `.info.json` files
+are not read, only `.chapters.txt`.
+
+**Tested with** Chrome on Linux (the browser test in `e2e/` runs in CI) and
+MySQL 8. Firefox, Safari, the arm64 image on real hardware and MariaDB have not
+been tried by hand yet; reports are welcome.
 
 ## License
 
 MIT, see `LICENSE`.
+
+Lectern is an independent project. It is not affiliated with or endorsed by
+Jellyfin or by any course platform, and other names belong to their owners.
 
 The third-party software in the web app and the server (Svelte, marked,
 DOMPurify, PDF.js, the Inter typeface, the Lucide icons, the Go MySQL driver)

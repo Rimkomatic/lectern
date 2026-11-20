@@ -1,0 +1,26 @@
+name: Idea or feature request
+description: Something Lectern could do that it does not do yet
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Lectern is meant to stay small: a course player for files you already have, with progress per person. Ideas that fit that are very welcome. Please check the "Not done yet" list in the README first; it may already be there.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: Describe the situation, not only the solution. "I have 300 courses and cannot find anything" is more useful than "add a search box".
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Is there a way around it today?
+      description: Anything you do now instead, or other tools that do it well.

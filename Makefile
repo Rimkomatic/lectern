@@ -9,10 +9,10 @@ GOFILES := cmd internal e2e
 COMPOSE_DEV := docker compose -f docker-compose.yml -f docker-compose.dev.yml
 
 .DEFAULT_GOAL := help
-.PHONY: help setup web build run test test-go test-web e2e fmt db db-test db-down image clean
+.PHONY: help setup web build run test test-go test-web e2e screenshots fmt db db-test db-down image clean
 
 help: ## Show this list
-	@grep -hE '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "} {printf "  %-9s %s\n", $$1, $$2}'
+	@grep -hE '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "} {printf "  %-12s %s\n", $$1, $$2}'
 
 setup: ## Once: fetch Go and npm dependencies (go mod tidy keeps go.sum in step)
 	go mod tidy
@@ -42,6 +42,9 @@ test-web: ## Web: type check, unit tests and the colour contrast check
 
 e2e: ## Browser smoke test with headless Chrome (empties the test database)
 	./e2e/run.sh
+
+screenshots: ## Retake the README pictures from a made-up demo library (empties the test database)
+	./e2e/screenshots.sh
 
 fmt: ## Format the Go code
 	gofmt -w $(GOFILES)
