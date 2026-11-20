@@ -29,7 +29,7 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: go.sum must be committed
         run: |
@@ -134,7 +134,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       # The compose file and settings template go on the release page, so that
       # .../releases/latest/download/docker-compose.yml always works.
       - name: Create the release
