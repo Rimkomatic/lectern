@@ -21,7 +21,7 @@ COPY web/ ./
 RUN npm run build
 
 # ---- 2. Server ---------------------------------------------------------------
-FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS server
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS server
 WORKDIR /src
 # "go.sum*" so that a source tree without go.sum still builds: the line after the
 # copies creates it then. The repository has it committed, and then it is used
